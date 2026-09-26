@@ -5,6 +5,7 @@ import {
   ProviderSetupError,
   settingsSecretLiteral,
 } from "@t3tools/contracts";
+import { applyDirenvEnvironment } from "../DirenvEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import {
@@ -276,7 +277,7 @@ export const AntigravityDriver: ProviderDriver<
           installation: executable,
           profile,
           cwd: input.cwd,
-          baseEnv: processEnvironment,
+          baseEnv: applyDirenvEnvironment(processEnvironment, input.direnvEnvironment),
           auth,
           runtimeTempDirectory,
         }),
