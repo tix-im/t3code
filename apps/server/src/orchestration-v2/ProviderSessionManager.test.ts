@@ -335,6 +335,7 @@ const makeNativeChildFixture = Effect.fnUntraced(function* () {
   const childThreadId = ThreadId.make("native-child");
   const providerSessionId = idAllocator.derive.providerSession({
     providerInstanceId: modelSelection.instanceId,
+    projectId: ProjectId.make("project-provider-session-manager"),
   });
   const childThreadEvent = yield* makeThreadCreatedEvent({
     idAllocator,
@@ -1388,6 +1389,7 @@ it.effect(
         const threadB = ThreadId.make("thread-provider-session-manager-shared-stopped-b");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -1477,6 +1479,7 @@ it.effect(
         const threadB = ThreadId.make("thread-provider-session-manager-stopped-ended-b");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -1627,6 +1630,7 @@ it.effect(
         const sibling = ThreadId.make("thread-provider-session-manager-release-sibling");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -2606,6 +2610,7 @@ it.effect(
         const threadId = ThreadId.make("thread-provider-session-manager-attach-race");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -2669,6 +2674,7 @@ it.effect(
         const threadId = ThreadId.make("thread-provider-session-manager-stale-attach");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -2761,6 +2767,7 @@ it.effect(
         const threadId = ThreadId.make("thread-provider-session-manager-resolve-stop");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -4209,6 +4216,7 @@ it.effect.each([
         });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
 
         yield* eventSink.write({
@@ -4489,6 +4497,7 @@ it.effect(
         });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: projectId,
         });
         const parentProviderThread = makeProviderThread({
           idAllocator,
@@ -4789,6 +4798,7 @@ it.effect.each([
         const parentRunId = idAllocator.derive.run({ threadId: parentThreadId, ordinal: 1 });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [yield* makeThreadCreatedEvent({ idAllocator, threadId: parentThreadId, now })],
@@ -4962,6 +4972,7 @@ it.effect(
         });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         const providerThread = makeProviderThread({
           idAllocator,
