@@ -355,6 +355,9 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   readonly allowDowngrade: boolean;
   readonly assumeYes: boolean;
 }) {
+  if (yield* HostProcess.isNixManaged) {
+    return yield* new CliUpdateError({ reason: HostProcess.NIX_MANAGED_UPDATE_MESSAGE });
+  }
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const runner = yield* ProcessRunner.ProcessRunner;

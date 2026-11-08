@@ -51,9 +51,11 @@ import { isExactServiceVersion } from "./serviceProtocol.ts";
 const PREFLIGHT_TIMEOUT = Duration.minutes(3);
 
 export function resolveServerSelfUpdateCapability(input: {
+  readonly nixManaged: boolean;
   readonly desktopManaged: boolean;
   readonly launcherManaged: boolean;
 }): ServerSelfUpdateCapability | null {
+  if (input.nixManaged) return null;
   if (input.desktopManaged) return "desktop-managed" as const;
   return input.launcherManaged ? ("boot-service" as const) : null;
 }
@@ -159,8 +161,12 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
     Effect.forkScoped,
   );
 
-  const capability: ServerSelfUpdateCapability | null =
-    serverConfig.mode === "desktop" ? "desktop-managed" : launcher.managed ? "boot-service" : null;
+  const nixManaged = yield* HostProcess.isNixManaged;
+  const capability = resolveServerSelfUpdateCapability({
+    nixManaged,
+    desktopManaged: serverConfig.mode === "desktop",
+    launcherManaged: launcher.managed,
+  });
   const failWith = (reason: string, cause?: unknown) =>
     cause === undefined
       ? new ServerSelfUpdateError({ reason })
@@ -199,6 +205,7 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
         "This server is managed by the T3 Code desktop app on its machine; update the desktop app to update it.",
       );
     }
+    if (nixManaged) return yield* failWith(HostProcess.NIX_MANAGED_UPDATE_MESSAGE);
     // The target must accept the launcher that will run it, which can be older than this server.
     const launcherProtocol = launcher.protocol;
     if (capability === null || launcherProtocol === undefined) {
