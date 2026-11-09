@@ -13,6 +13,7 @@ import * as Orchestrator from "../../src/orchestration-v2/Orchestrator.ts";
 import Migration from "./migrations/001_TiximWorkflowLinks.ts";
 import RelationshipsMigration from "./migrations/002_TiximWorkflowRelationships.ts";
 import InactivityMigration from "./migrations/003_TiximWorkflowWaitInactivity.ts";
+import NotificationsMigration from "./migrations/004_TiximWorkflowNotifications.ts";
 import * as TiximWorkflows from "./TiximWorkflows.ts";
 import { make } from "./TiximWorkflowWaits.ts";
 
@@ -43,12 +44,27 @@ const setup = Effect.gen(function* () {
   yield* Migration;
   yield* RelationshipsMigration;
   yield* InactivityMigration;
+  yield* NotificationsMigration;
 });
+const addLink = (
+  daemonId: string,
+  options: { lastState?: string | null; relationship?: string } = {},
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`INSERT INTO tixim_workflow_links (thread_id, daemon_id, run_id, connection_id, source, relationship, payload_json, last_state)
+      VALUES ('thread', ${daemonId}, 'wf-same-run-1234', ${daemonId}, 'automatic', ${options.relationship ?? "owner"}, '{}',
+        ${options.lastState === undefined ? "running" : options.lastState})`;
+  });
 const fixture = () => {
   const state = {
     runs: [task("one"), task("two")],
     messages: [] as OrchestrationV2ServerCommand[],
     failDispatch: false,
+    shell: {
+      activeRunId: null as string | null,
+      lineage: { relationshipToParent: "root" },
+    },
   };
   const layer = Layer.mergeAll(
     NodeSqliteClient.layer({ filename: ":memory:" }),
@@ -57,8 +73,11 @@ const fixture = () => {
     Layer.mock(TiximWorkflows.WorkflowOperations)({
       list: () => Effect.sync(() => ({ runs: state.runs, connections: [] })),
       observe: () => Effect.sync(() => state.runs),
+      readProgress: (_connectionId, daemonId) =>
+        Effect.sync(() => state.runs.filter((run) => run.daemonId === daemonId)),
     }),
     Layer.mock(Orchestrator.OrchestratorV2)({
+      getThreadShell: () => Effect.sync(() => state.shell as never),
       dispatch: (command) =>
         Effect.gen(function* () {
           state.messages.push(command);
@@ -127,6 +146,7 @@ describe("durable workflow waiting", () => {
                 }
                 return runs;
               }),
+            readProgress: () => Effect.die("unused"),
             search: () => Effect.die("unused"),
             link: () => Effect.die("unused"),
           }),
@@ -312,6 +332,7 @@ describe("durable workflow waiting", () => {
           TiximWorkflows.WorkflowOperations.of({
             list: () => Effect.fail(new TiximCommandError({ message: "offline" })),
             observe: () => Effect.die("unused"),
+            readProgress: () => Effect.die("unused"),
             search: () => Effect.die("unused"),
             link: () => Effect.die("unused"),
           }),
@@ -320,6 +341,186 @@ describe("durable workflow waiting", () => {
       expect((yield* Effect.result(failed.wait({ threadId: "thread" })))._tag).toBe("Failure");
       const sql = yield* SqlClient.SqlClient;
       expect(yield* sql`SELECT * FROM tixim_workflow_waits`).toHaveLength(1);
+    }).pipe(Effect.provide(layer));
+  });
+  it.effect("does not wake for untracked runs or attention raised before the wait", () => {
+    const { state, layer } = fixture();
+    state.runs = [task("one", { attention: true }), task("two", { relationship: "untracked" })];
+    return Effect.gen(function* () {
+      yield* setup;
+      const waits = yield* make;
+      expect(yield* waits.wait({ threadId: "thread" })).toMatchObject({ runCount: 1 });
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(0);
+    }).pipe(Effect.provide(layer));
+  });
+});
+
+describe("workflow notification queue", () => {
+  const complete = (state: ReturnType<typeof fixture>["state"], daemonId: string) => {
+    state.runs = state.runs.map((run) =>
+      run.daemonId === daemonId ? { ...run, state: "completed" } : run,
+    );
+  };
+
+  it.effect("batches terminal transitions once after the grace period", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one");
+      yield* addLink("two");
+      const waits = yield* make;
+      complete(state, "one");
+      yield* waits.sweep;
+      yield* TestClock.adjust("20 seconds");
+      complete(state, "two");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(0);
+      yield* TestClock.adjust("10 seconds");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]).toMatchObject({
+        dispatchMode: { type: "queue_after_active" },
+        text: expect.stringMatching(/one\/wf-same-run-1234: completed\ntwo\/wf-same-run-1234/),
+      });
+      yield* TestClock.adjust("1 hour");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(1);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("stays silent for untracked runs and a migrated link's first observation", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one", { lastState: null });
+      yield* addLink("two", { relationship: "untracked" });
+      const waits = yield* make;
+      complete(state, "one");
+      complete(state, "two");
+      yield* waits.sweep;
+      yield* TestClock.adjust("1 hour");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(0);
+      expect((yield* waits.poll("thread")).notifications).toHaveLength(0);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("queues attention once per raise", () => {
+    const { state, layer } = fixture();
+    const setAttention = (attention: boolean) => {
+      state.runs = [task("one", { attention })];
+    };
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one");
+      const waits = yield* make;
+      setAttention(true);
+      yield* waits.sweep;
+      yield* waits.sweep;
+      expect((yield* waits.poll("thread")).notifications).toMatchObject([{ kind: "attention" }]);
+      yield* waits.sweep;
+      expect((yield* waits.poll("thread")).notifications).toHaveLength(0);
+      setAttention(false);
+      yield* waits.sweep;
+      setAttention(true);
+      yield* waits.sweep;
+      expect((yield* waits.poll("thread")).notifications).toHaveLength(1);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("keeps updates pollable during a turn and wakes only with what is left", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one");
+      yield* addLink("two");
+      const waits = yield* make;
+      state.shell.activeRunId = "run";
+      complete(state, "one");
+      yield* waits.sweep;
+      yield* TestClock.adjust("1 minute");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(0);
+      expect((yield* waits.poll("thread")).notifications).toMatchObject([
+        { daemonId: "one", kind: "terminal", state: "completed" },
+      ]);
+      complete(state, "two");
+      yield* waits.sweep;
+      yield* TestClock.adjust("1 minute");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(0);
+      state.shell.activeRunId = null;
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]).toMatchObject({ text: expect.not.stringContaining("one/") });
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("never wakes a delegated child but leaves its updates pollable", () => {
+    const { state, layer } = fixture();
+    state.shell.lineage.relationshipToParent = "subagent";
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one");
+      const waits = yield* make;
+      complete(state, "one");
+      yield* waits.sweep;
+      yield* TestClock.adjust("1 hour");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(0);
+      expect((yield* waits.poll("thread")).notifications).toHaveLength(1);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("holds awaited runs for their wait, which reports them exactly once", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one");
+      yield* addLink("two");
+      const waits = yield* make;
+      yield* waits.wait({ threadId: "thread" });
+      complete(state, "one");
+      yield* waits.sweep;
+      yield* TestClock.adjust("1 minute");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(0);
+      complete(state, "two");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]).toMatchObject({
+        text: expect.stringContaining("All awaited workflows have settled"),
+      });
+      yield* TestClock.adjust("1 hour");
+      yield* waits.sweep;
+      expect(state.messages).toHaveLength(1);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("replays a claimed batch unchanged after dispatch failure and restart", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one");
+      yield* addLink("two");
+      const waits = yield* make;
+      complete(state, "one");
+      yield* waits.sweep;
+      yield* TestClock.adjust("30 seconds");
+      state.failDispatch = true;
+      yield* waits.sweep;
+      state.failDispatch = false;
+      complete(state, "two");
+      expect((yield* waits.poll("thread")).notifications).toHaveLength(0);
+      const restarted = yield* make;
+      yield* restarted.sweep;
+      expect(state.messages).toHaveLength(2);
+      expect(state.messages[1]).toEqual(state.messages[0]);
+      yield* TestClock.adjust("30 seconds");
+      yield* restarted.sweep;
+      expect(state.messages).toHaveLength(3);
+      expect(state.messages[2]).toMatchObject({ text: expect.stringContaining("two/") });
     }).pipe(Effect.provide(layer));
   });
 });

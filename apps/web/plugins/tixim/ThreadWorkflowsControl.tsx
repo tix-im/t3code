@@ -13,6 +13,7 @@ import {
   runStreamInEnvironment,
 } from "@t3tools/client-runtime/state/runtime";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { useContext, useEffect, useRef, useState } from "react";
 import {
@@ -50,6 +51,13 @@ import {
 import { workflowEnvironment } from "./state";
 
 const terminal = new Set(["completed", "failed", "cancelled", "skipped"]);
+const isRelationship = Schema.is(TiximWorkflowRelationship);
+const relationshipLabels: Record<TiximWorkflowRelationship, string> = {
+  owner: "Owner",
+  tracking: "Tracking",
+  waiting_on: "Waiting on",
+  untracked: "Untracked",
+};
 const statusColors: Record<string, string> = {
   pending: "text-warning",
   queued: "text-warning",
@@ -222,7 +230,7 @@ export function ThreadWorkflowsControl({
   const [connectionId, setConnectionId] = useState("");
   const [query, setQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [relationship, setRelationship] = useState<TiximWorkflowRelationship>("tracking");
+  const [relationship, setRelationship] = useState<TiximWorkflowRelationship>("untracked");
   const [attaching, setAttaching] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -356,7 +364,7 @@ export function ThreadWorkflowsControl({
               disabled={run.relationship === value || run.availability !== "available"}
               onClick={() => void mutate(run, true, value)}
             >
-              {value === "owner" ? "Owner" : value === "tracking" ? "Tracking" : "Waiting on"}
+              {relationshipLabels[value]}
               {run.relationship === value ? " ✓" : ""}
             </MenuItem>
           ))}
@@ -477,13 +485,14 @@ export function ThreadWorkflowsControl({
               value={relationship}
               onChange={(event) => {
                 const value = event.target.value;
-                if (value === "owner" || value === "tracking" || value === "waiting_on")
-                  setRelationship(value);
+                if (isRelationship(value)) setRelationship(value);
               }}
             >
-              <option value="tracking">Tracking</option>
-              <option value="owner">Owner</option>
-              <option value="waiting_on">Waiting on</option>
+              {TiximWorkflowRelationship.literals.toReversed().map((value) => (
+                <option key={value} value={value}>
+                  {relationshipLabels[value]}
+                </option>
+              ))}
             </select>
           </label>
           {error && (

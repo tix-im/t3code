@@ -25,7 +25,7 @@ const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A,
 
 const workflowOperation = Effect.fn(function* (input: {
   threadId?: ThreadId | undefined;
-  action: "list" | "search" | "attach" | "detach";
+  action: "list" | "search" | "attach" | "detach" | "poll";
   connectionId?: string | undefined;
   daemonId?: string | undefined;
   runId?: string | undefined;
@@ -35,6 +35,11 @@ const workflowOperation = Effect.fn(function* (input: {
 }) {
   const { projection } = yield* readThread(input.threadId);
   const threadId = projection.thread.id;
+  if (input.action === "poll") {
+    const waits = yield* Effect.serviceOption(TiximWorkflowWaits.WorkflowWaits);
+    if (Option.isNone(waits)) return yield* unavailable();
+    return yield* waits.value.poll(threadId).pipe(Effect.mapError(unavailable));
+  }
   const available = yield* Effect.serviceOption(TiximWorkflows.WorkflowOperations);
   if (Option.isNone(available)) return yield* unavailable();
   const workflows = available.value;

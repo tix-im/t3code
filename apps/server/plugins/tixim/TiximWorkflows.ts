@@ -226,10 +226,12 @@ export const list = Effect.fn(function* (threadId: string) {
         relationship: existing?.relationship ?? "owner",
         availability: "available",
       };
-      yield* sql`INSERT INTO tixim_workflow_links (thread_id, daemon_id, run_id, connection_id, source, relationship, excluded, payload_json)
-        SELECT ${threadId}, ${run.daemonId}, ${run.runId}, ${run.connectionId}, ${source}, ${run.relationship}, 0, ${encodeRun(run)}
+      // A restarted run leaves its terminal state here, which re-arms its notification.
+      yield* sql`INSERT INTO tixim_workflow_links (thread_id, daemon_id, run_id, connection_id, source, relationship, excluded, payload_json, last_state, attention_seen)
+        SELECT ${threadId}, ${run.daemonId}, ${run.runId}, ${run.connectionId}, ${source}, ${run.relationship}, 0, ${encodeRun(run)}, ${run.state}, ${run.attention ? 1 : 0}
         WHERE EXISTS (SELECT 1 FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId} AND deleted_at IS NULL)
-        ON CONFLICT(thread_id, daemon_id, run_id) DO UPDATE SET payload_json = json_set(excluded.payload_json, '$.relationship', tixim_workflow_links.relationship), connection_id = excluded.connection_id, source = excluded.source
+        ON CONFLICT(thread_id, daemon_id, run_id) DO UPDATE SET payload_json = json_set(excluded.payload_json, '$.relationship', tixim_workflow_links.relationship), connection_id = excluded.connection_id, source = excluded.source,
+          last_state = CASE WHEN tixim_workflow_links.last_state IN ('completed', 'failed', 'cancelled', 'skipped') AND excluded.last_state NOT IN ('completed', 'failed', 'cancelled', 'skipped') THEN excluded.last_state ELSE tixim_workflow_links.last_state END
         WHERE tixim_workflow_links.excluded = 0`;
       runs.set(key, run);
     }
@@ -294,6 +296,12 @@ const searchImpl = Effect.fn(function* (input: TiximWorkflowSearchInput) {
 });
 export const search = (input: TiximWorkflowSearchInput) => safe(searchImpl(input));
 
+const dropPending = Effect.fn(function* (input: TiximWorkflowLinkInput) {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`DELETE FROM tixim_workflow_notifications
+    WHERE thread_id = ${input.threadId} AND daemon_id = ${input.daemonId} AND run_id = ${input.runId} AND wake_id IS NULL`;
+});
+
 const linkImpl = Effect.fn(function* (input: TiximWorkflowLinkInput) {
   yield* thread(input.threadId);
   const sql = yield* SqlClient.SqlClient;
@@ -315,16 +323,49 @@ const linkImpl = Effect.fn(function* (input: TiximWorkflowLinkInput) {
         input.relationship ?? previous[0]?.relationship ?? (found.hosting ? "owner" : "tracking"),
       availability: "available",
     };
-    yield* sql`INSERT INTO tixim_workflow_links (thread_id, daemon_id, run_id, connection_id, source, relationship, excluded, payload_json)
-      SELECT ${input.threadId}, ${input.daemonId}, ${input.runId}, ${input.connectionId}, ${run.source}, ${run.relationship}, 0, ${encodeRun(run)}
+    // Starting to track reports nothing already visible; a relationship swap keeps a pending edge.
+    yield* sql`INSERT INTO tixim_workflow_links (thread_id, daemon_id, run_id, connection_id, source, relationship, excluded, payload_json, last_state, attention_seen)
+      SELECT ${input.threadId}, ${input.daemonId}, ${input.runId}, ${input.connectionId}, ${run.source}, ${run.relationship}, 0, ${encodeRun(run)}, ${run.state}, ${run.attention ? 1 : 0}
       WHERE EXISTS (SELECT 1 FROM orchestration_v2_projection_threads WHERE thread_id = ${input.threadId} AND deleted_at IS NULL)
-      ON CONFLICT(thread_id, daemon_id, run_id) DO UPDATE SET excluded = 0, connection_id = excluded.connection_id, source = excluded.source, relationship = excluded.relationship, payload_json = excluded.payload_json`;
+      ON CONFLICT(thread_id, daemon_id, run_id) DO UPDATE SET connection_id = excluded.connection_id, source = excluded.source, payload_json = excluded.payload_json,
+        last_state = CASE WHEN tixim_workflow_links.excluded = 1 OR tixim_workflow_links.relationship = 'untracked' THEN excluded.last_state ELSE tixim_workflow_links.last_state END,
+        attention_seen = CASE WHEN tixim_workflow_links.excluded = 1 OR tixim_workflow_links.relationship = 'untracked' THEN excluded.attention_seen ELSE tixim_workflow_links.attention_seen END,
+        relationship = excluded.relationship, excluded = 0`;
+    if (run.relationship === "untracked") yield* dropPending(input);
   } else {
     yield* sql`UPDATE tixim_workflow_links SET excluded = 1 WHERE thread_id = ${input.threadId} AND daemon_id = ${input.daemonId} AND run_id = ${input.runId}`;
+    yield* dropPending(input);
   }
   return yield* list(input.threadId);
 });
 export const link = (input: TiximWorkflowLinkInput) => safe(linkImpl(input));
+
+const readProgress = Effect.fn("TiximWorkflows.readProgress")(function* (
+  connectionId: string,
+  daemonId: string,
+  runIds: ReadonlyArray<string>,
+) {
+  const runner = yield* ProcessRunner.ProcessRunner;
+  const selected = yield* connection(connectionId);
+  const output = yield* runner.run({
+    command: resolveTiximCommand(selected.environment),
+    args: [
+      ...(selected.context ? ["--context", selected.context] : []),
+      "flow-bridge",
+      "progress",
+      "--daemon",
+      daemonId,
+    ],
+    stdin: encodeProgressInput({ runIds }),
+    env: { ...selected.environment, TIX_WAIT_FOR_DAEMON: "0" },
+    timeout: "2 minutes",
+    maxOutputBytes: 32 * 1024 * 1024,
+  });
+  if (output.code !== 0) return yield* failure();
+  const snapshot = yield* decodeProgress(output.stdout);
+  if (snapshot.daemonId !== daemonId) return yield* failure();
+  return snapshot.runs;
+});
 
 const observe = Effect.fn("TiximWorkflows.observe")(function* (
   threadId: string,
@@ -332,7 +373,6 @@ const observe = Effect.fn("TiximWorkflows.observe")(function* (
 ) {
   yield* thread(threadId);
   const sql = yield* SqlClient.SqlClient;
-  const runner = yield* ProcessRunner.ProcessRunner;
   const wanted = new Set(targets.map((run) => `${run.daemonId}/${run.runId}`));
   const rows = yield* sql<{
     payload_json: string;
@@ -348,33 +388,15 @@ const observe = Effect.fn("TiximWorkflows.observe")(function* (
   for (const runs of groups.values()) {
     const first = runs[0]!;
     const result = yield* Effect.result(
-      Effect.gen(function* () {
-        const selected = yield* connection(first.connectionId);
-        const output = yield* runner.run({
-          command: resolveTiximCommand(selected.environment),
-          args: [
-            ...(selected.context ? ["--context", selected.context] : []),
-            "flow-bridge",
-            "progress",
-            "--daemon",
-            first.daemonId,
-          ],
-          stdin: encodeProgressInput({ runIds: runs.map((run) => run.runId) }),
-          env: { ...selected.environment, TIX_WAIT_FOR_DAEMON: "0" },
-          timeout: "2 minutes",
-          maxOutputBytes: 32 * 1024 * 1024,
-        });
-        if (output.code !== 0) return yield* failure();
-        const snapshot = yield* decodeProgress(output.stdout);
-        if (snapshot.daemonId !== first.daemonId) return yield* failure();
-        return snapshot;
-      }),
+      readProgress(
+        first.connectionId,
+        first.daemonId,
+        runs.map((run) => run.runId),
+      ),
     );
     for (const run of runs) {
       const value =
-        result._tag === "Success"
-          ? result.success.runs.find((r) => r.runId === run.runId)
-          : undefined;
+        result._tag === "Success" ? result.success.find((r) => r.runId === run.runId) : undefined;
       observations.push(
         value
           ? { ...run, ...value, availability: "available" }
@@ -526,6 +548,18 @@ export class WorkflowOperations extends Context.Service<
       threadId: string,
       targets: ReadonlyArray<TiximWorkflowRun>,
     ) => Effect.Effect<ReadonlyArray<WorkflowObservation>, TiximCommandError>;
+    readonly readProgress: (
+      connectionId: string,
+      daemonId: string,
+      runIds: ReadonlyArray<string>,
+    ) => Effect.Effect<
+      ReadonlyArray<{
+        readonly runId: string;
+        readonly state: string;
+        readonly attention: boolean;
+      }>,
+      TiximCommandError
+    >;
     readonly list: (
       threadId: string,
     ) => Effect.Effect<
@@ -556,6 +590,10 @@ export const layer = Layer.effect(
       observe: Effect.fn("WorkflowOperations.observe")(
         (id: string, targets: ReadonlyArray<TiximWorkflowRun>) =>
           safe(observe(id, targets)).pipe(Effect.provide(context)),
+      ),
+      readProgress: Effect.fn("WorkflowOperations.readProgress")(
+        (connectionId: string, daemonId: string, runIds: ReadonlyArray<string>) =>
+          safe(readProgress(connectionId, daemonId, runIds)).pipe(Effect.provide(context)),
       ),
       list: Effect.fn("WorkflowOperations.list")((id: string) =>
         safe(list(id)).pipe(Effect.provide(context)),
