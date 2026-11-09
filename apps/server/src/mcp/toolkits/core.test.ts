@@ -1239,6 +1239,7 @@ it.effect("routes workflow attachment tools through the registered backend servi
         Layer.provide(
           Layer.succeed(TiximWorkflows.WorkflowOperations, {
             observe: () => Effect.succeed([]),
+            readProgress: () => Effect.succeed([]),
             list: (id) => {
               expect(id).toBe("workflow-thread");
               return Effect.succeed({

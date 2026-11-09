@@ -54,7 +54,12 @@ export class TiximCommandError extends Schema.TaggedError<TiximCommandError>()(
   },
 ) {}
 
-export const TiximWorkflowRelationship = Schema.Literals(["owner", "tracking", "waiting_on"]);
+export const TiximWorkflowRelationship = Schema.Literals([
+  "owner",
+  "tracking",
+  "waiting_on",
+  "untracked",
+]);
 export type TiximWorkflowRelationship = typeof TiximWorkflowRelationship.Type;
 
 export const TiximWorkflowRun = Schema.Struct({
@@ -114,6 +119,17 @@ export const TiximWorkflowWaitResult = Schema.Struct({
   status: Schema.Literals(["waiting", "settled", "cancelled"]),
   runCount: Schema.Int,
   deadline: Schema.NullOr(Schema.Number),
+  next: Schema.String,
+});
+export const TiximWorkflowNotification = Schema.Struct({
+  daemonId: Schema.String,
+  runId: Schema.String,
+  kind: Schema.Literals(["terminal", "attention"]),
+  state: Schema.String,
+  createdAt: Schema.Number,
+});
+export const TiximWorkflowPollResult = Schema.Struct({
+  notifications: Schema.Array(TiximWorkflowNotification),
   next: Schema.String,
 });
 export const TiximFlowRpcInput = Schema.Struct({

@@ -14,6 +14,7 @@ import * as ProcessRunner from "../../src/processRunner.ts";
 import Migration from "./migrations/001_TiximWorkflowLinks.ts";
 import RelationshipsMigration from "./migrations/002_TiximWorkflowRelationships.ts";
 import InactivityMigration from "./migrations/003_TiximWorkflowWaitInactivity.ts";
+import NotificationsMigration from "./migrations/004_TiximWorkflowNotifications.ts";
 import * as TiximWorkflows from "./TiximWorkflows.ts";
 import {
   list,
@@ -46,6 +47,7 @@ const setup = Effect.gen(function* () {
   yield* sql`CREATE TABLE orchestration_v2_projection_provider_threads(thread_id TEXT, payload_json TEXT)`;
   yield* Migration;
   yield* RelationshipsMigration;
+  yield* NotificationsMigration;
   yield* sql`CREATE TABLE orchestration_v2_projection_messages(thread_id TEXT, role TEXT, payload_json TEXT)`;
 });
 const base = Layer.mergeAll(
@@ -152,8 +154,51 @@ describe("thread workflows", () => {
       ).toEqual([
         { wait_id: "saved-wait", deadline_ms: 2000, timeout_ms: null, progress_json: "[]" },
       ]);
+      yield* NotificationsMigration;
+      expect(
+        yield* sql`SELECT run_id, relationship, json_extract(payload_json, '$.relationship') AS cached, last_state FROM tixim_workflow_links ORDER BY run_id`,
+      ).toEqual([
+        { run_id: "auto", relationship: "owner", cached: "owner", last_state: null },
+        { run_id: "host", relationship: "owner", cached: "owner", last_state: null },
+        { run_id: "manual", relationship: "untracked", cached: "untracked", last_state: null },
+      ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
+  it.effect("baselines newly tracked runs, drops updates on untrack, and re-arms a restart", () => {
+    let state = "running";
+    return Effect.gen(function* () {
+      yield* setup;
+      const sql = yield* SqlClient.SqlClient;
+      const binding = {
+        threadId: "thread-a",
+        connectionId: "tix-one",
+        daemonId: "daemon-one",
+        runId: "task",
+        attach: true,
+      };
+      const lastState = sql<{
+        last_state: string | null;
+      }>`SELECT last_state FROM tixim_workflow_links`;
+      yield* list("thread-a");
+      yield* sql`INSERT INTO tixim_workflow_notifications (thread_id, daemon_id, run_id, kind, state, created_at_ms)
+        VALUES ('thread-a', 'daemon-one', 'task', 'terminal', 'completed', 1)`;
+      yield* link({ ...binding, relationship: "untracked" });
+      expect(yield* sql`SELECT * FROM tixim_workflow_notifications`).toHaveLength(0);
+      state = "completed";
+      yield* link({ ...binding, relationship: "tracking" });
+      expect(yield* lastState).toEqual([{ last_state: "completed" }]);
+      state = "running";
+      yield* list("thread-a");
+      expect(yield* lastState).toEqual([{ last_state: "running" }]);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          base,
+          runner(() => encode({ daemonId: "daemon-one", runs: [run("task", { state })] })),
+        ),
+      ),
+    );
+  });
   it.effect(
     "reads progress only for linked targets and refuses another daemon's observations",
     () => {

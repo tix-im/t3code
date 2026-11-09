@@ -22,6 +22,7 @@ it.effect(
         Effect.provideService(WorkflowWaits, {
           start,
           wait: () => Effect.die("Disabled plugin must not wait"),
+          poll: () => Effect.die("Disabled plugin must not poll"),
           sweep: Effect.die("Disabled plugin must not sweep"),
         }),
       );
@@ -30,6 +31,6 @@ it.effect(
       expect(pluginProviderDrivers).toEqual([]);
       expect(
         pluginMigrationTracks.map(({ table, migrations }) => [table, migrations.map(([id]) => id)]),
-      ).toEqual([["tixim_sql_migrations", [1, 2, 3]]]);
+      ).toEqual([["tixim_sql_migrations", [1, 2, 3, 4]]]);
     }),
 );

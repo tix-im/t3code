@@ -93,9 +93,9 @@ it("attaches a suggested dependency from the selected daemon and searches withou
     mentionedOnly: true,
   });
   expect(state.changeLink).not.toHaveBeenCalled();
-  await page
-    .getByRole("combobox", { name: "Relationship", exact: true })
-    .selectOptions("waiting_on");
+  const picker = page.getByRole("combobox", { name: "Relationship", exact: true });
+  await expect.element(picker).toHaveValue("untracked");
+  await picker.selectOptions("waiting_on");
   await page.getByRole("button", { name: /^Other daemon/ }).click();
   expect(state.changeLink).toHaveBeenCalledWith({
     environmentId: "env",
