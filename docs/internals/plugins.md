@@ -55,6 +55,11 @@ errors behind the same authorization checks; historical schemas and migrations
 remain available. Inert server service objects remain constructed so the host's
 statically typed layer graph is stable, but no plugin worker starts.
 
+`T3CODE_TIXIM=0` in the server's environment is the startup equivalent for server
+contributions: agent instructions, MCP tools, the provider driver, RPC handlers,
+and the worker. It is read once at server start because agent text and MCP tools
+are fixed for the process. Clients are unaffected and see the typed disabled errors.
+
 Desktop project discovery, its preload bridge, and model-facing workflow text are
 plugin contributions. Native uses tap-to-open workflow details instead of mouse
 hover. The native app's provider settings screen manages accounts rather than
