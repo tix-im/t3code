@@ -1,13 +1,13 @@
-import { pluginContract } from "@t3tools/contracts";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import { mergeContributions } from "../src/plugins/registry.ts";
+import { pluginActive } from "./active.ts";
 import * as TiximRpc from "./tixim/rpc.ts";
 import * as TiximLifecycle from "./tixim/lifecycle.ts";
 
 export const makePluginRpcHandlers = Effect.map(
-  TiximRpc.makeRpcHandlersFor(pluginContract.enabled),
+  TiximRpc.makeRpcHandlersFor(pluginActive),
   (handlers) => mergeContributions(handlers),
 );
 export const pluginServices = TiximLifecycle.services;
-export const pluginStartup = pluginContract.enabled ? TiximLifecycle.startup : Layer.empty;
+export const pluginStartup = pluginActive ? TiximLifecycle.startup : Layer.empty;

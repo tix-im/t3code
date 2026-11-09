@@ -101,4 +101,4 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
 
 export { orchestrationInstructions } from "./instructions.ts";
 
-export { enabled } from "./configuration.ts";
+export { enabled, serverSwitchOn } from "./configuration.ts";
