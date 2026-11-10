@@ -46,6 +46,10 @@ export function createWorkflowEnvironment<R, E>(
       label: "tixim:tiximWorkflowLink",
       tag: WS_METHODS.tiximWorkflowLink,
     }),
+    tiximWorkflowSnooze: createEnvironmentRpcCommand(connectionAtomRuntime, {
+      label: "tixim:tiximWorkflowSnooze",
+      tag: WS_METHODS.tiximWorkflowSnooze,
+    }),
   };
 
   return { ...workflowEnvironment, reference: createWorkflowReferenceFamily(workflowEnvironment) };

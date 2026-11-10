@@ -10,4 +10,5 @@ export const makePluginRpcHandlers = Effect.map(
   (handlers) => mergeContributions(handlers),
 );
 export const pluginServices = TiximLifecycle.services;
+export const pluginRpcContext = TiximLifecycle.rpcContext;
 export const pluginStartup = pluginActive ? TiximLifecycle.startup : Layer.empty;

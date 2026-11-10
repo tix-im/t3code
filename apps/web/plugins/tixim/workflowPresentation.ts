@@ -79,13 +79,12 @@ export const workflowRunKey = (run: Pick<TiximWorkflowRun, "daemonId" | "runId">
   `${run.daemonId}/${run.runId}`;
 
 const present = (counts: ReadonlyArray<WorkflowCount>) => counts.filter((item) => item.count > 0);
-const describeParts = (parts: ReadonlyArray<readonly [number, string]>) =>
-  parts
-    .filter(([count]) => count > 0)
-    .map(([count, label]) => `${count} ${label}`)
-    .join(", ");
 
-export function workflowStepCounts(steps: TiximWorkflowRun["steps"]): WorkflowCount[] {
+/** `waiting` already includes `queued`. The row combines them, and `splitQueued` separates them. */
+export function workflowStepCounts(
+  steps: TiximWorkflowRun["steps"],
+  splitQueued = false,
+): WorkflowCount[] {
   if (steps === undefined) return [];
   return present([
     { key: "running", label: "running", icon: CircleDotIcon, tone: "info", count: steps.running },
@@ -101,7 +100,14 @@ export function workflowStepCounts(steps: TiximWorkflowRun["steps"]): WorkflowCo
       label: "waiting",
       icon: CircleDashedIcon,
       tone: "warning",
-      count: steps.waiting,
+      count: splitQueued ? steps.waiting - steps.queued : steps.waiting,
+    },
+    {
+      key: "queued",
+      label: "queued",
+      icon: CircleDashedIcon,
+      tone: "warning",
+      count: splitQueued ? steps.queued : 0,
     },
     {
       key: "succeeded",
@@ -125,26 +131,26 @@ export function workflowReportCounts(reports: TiximWorkflowRun["reports"]): Work
   return present([
     {
       key: "failure",
-      label: "failure reports",
+      label: "failure",
       icon: OctagonXIcon,
       tone: "destructive",
       count: reports.failure,
     },
     {
       key: "warning",
-      label: "warning reports",
+      label: "warning",
       icon: TriangleAlertIcon,
       tone: "warning",
       count: reports.warning,
     },
     {
       key: "success",
-      label: "success reports",
+      label: "success",
       icon: BadgeCheckIcon,
       tone: "success",
       count: reports.success,
     },
-    { key: "info", label: "info reports", icon: InfoIcon, tone: "muted", count: reports.info },
+    { key: "info", label: "info", icon: InfoIcon, tone: "muted", count: reports.info },
   ]);
 }
 
@@ -164,28 +170,7 @@ export function workflowRunCounts(runs: ReadonlyArray<TiximWorkflowRun>): Workfl
   }).sort((a, b) => rank(a.key) - rank(b.key));
 }
 
-/** The row combines waiting and queued; `waiting` already includes `queued`. */
-export function describeWorkflowSteps(steps: NonNullable<TiximWorkflowRun["steps"]>): string {
-  return describeParts([
-    [steps.running, "running"],
-    [steps.failed, "failed"],
-    [steps.waiting - steps.queued, "waiting"],
-    [steps.queued, "queued"],
-    [steps.succeeded, "done"],
-    [steps.skipped, "skipped"],
-  ]);
-}
-
-export function describeWorkflowReports(reports: NonNullable<TiximWorkflowRun["reports"]>): string {
-  return describeParts([
-    [reports.failure, "failure"],
-    [reports.warning, "warning"],
-    [reports.success, "success"],
-    [reports.info, "info"],
-  ]);
-}
-
-function reportGlyph(type: string): Pick<WorkflowGlyph, "icon" | "tone"> {
+export function workflowReportGlyph(type: string): Pick<WorkflowGlyph, "icon" | "tone"> {
   switch (type.trim().toLowerCase()) {
     case "failure":
       return { icon: OctagonXIcon, tone: "destructive" };
@@ -212,7 +197,7 @@ export function workflowRunNote(
           : `Waiting for ${run.pendingInputCount} inputs`,
     };
   if (run.latestReport) {
-    const glyph = reportGlyph(run.latestReport.type);
+    const glyph = workflowReportGlyph(run.latestReport.type);
     if (glyph.tone === "destructive" || glyph.tone === "warning")
       return { ...glyph, text: run.latestReport.message };
   }

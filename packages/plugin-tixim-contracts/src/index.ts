@@ -7,6 +7,7 @@ export const methods = {
   tiximWorkflows: "server.tiximWorkflows",
   tiximWorkflowSearch: "server.tiximWorkflowSearch",
   tiximWorkflowLink: "server.tiximWorkflowLink",
+  tiximWorkflowSnooze: "server.tiximWorkflowSnooze",
   tiximFlowRead: "server.tiximFlowRead",
   tiximFlowWrite: "server.tiximFlowWrite",
   serverListTiximContexts: "server.listTiximContexts",
@@ -21,6 +22,7 @@ export const scopes = {
   [methods.tiximWorkflows]: "orchestration:read",
   [methods.tiximWorkflowSearch]: "orchestration:read",
   [methods.tiximWorkflowLink]: "orchestration:operate",
+  [methods.tiximWorkflowSnooze]: "orchestration:operate",
   [methods.tiximFlowRead]: "orchestration:read",
   [methods.tiximFlowWrite]: "orchestration:operate",
   [methods.serverListTiximContexts]: "providers:manage",
@@ -29,6 +31,7 @@ export const scopes = {
 } as const;
 export const clientScopes = {
   [methods.tiximWorkflowLink]: scopes[methods.tiximWorkflowLink],
+  [methods.tiximWorkflowSnooze]: scopes[methods.tiximWorkflowSnooze],
   [methods.tiximFlowWrite]: scopes[methods.tiximFlowWrite],
 } as const;
 export const providers = [
@@ -52,6 +55,12 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
   const WstiximWorkflowLinkRpc = Rpc.make(methods.tiximWorkflowLink, {
     payload: schemas.TiximWorkflowLinkInput,
     success: schemas.TiximWorkflowListResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+
+  const WstiximWorkflowSnoozeRpc = Rpc.make(methods.tiximWorkflowSnooze, {
+    payload: schemas.TiximWorkflowSnoozeInput,
+    success: schemas.TiximWorkflowSnoozeResult,
     error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
   });
 
@@ -91,6 +100,7 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
     WstiximWorkflowsRpc,
     WstiximWorkflowSearchRpc,
     WstiximWorkflowLinkRpc,
+    WstiximWorkflowSnoozeRpc,
     WstiximFlowReadRpc,
     WstiximFlowWriteRpc,
     WsServerListTiximContextsRpc,
