@@ -17,6 +17,13 @@ export {
   MenuRadioItem,
 } from "../components/ui/menu";
 export { ThreadDetailsSection } from "../components/chat/ThreadDetailsSection";
+export { ThreadDetailsControl } from "../components/chat/ThreadDetailsControl";
+export { THREAD_DETAILS_PANEL_ICON_CLASS } from "../components/chat/threadDetailsPanelStyles";
+export { ThreadHoverCard, ThreadHoverCardPopup } from "../components/ThreadHoverCard";
+export { Command, CommandInput, CommandItem, CommandList } from "../components/ui/command";
+export { Spinner } from "../components/ui/spinner";
+export { useHtmlRenderTheme } from "../hooks/useHtmlRenderTheme";
+export { useNowMinute } from "../hooks/useNowMinute";
 
 import { serverEnvironment } from "../state/server";
 export const refreshProviders = serverEnvironment.refreshProviders;

@@ -62,6 +62,42 @@ export const TiximWorkflowRelationship = Schema.Literals([
 ]);
 export type TiximWorkflowRelationship = typeof TiximWorkflowRelationship.Type;
 
+const TiximWorkflowStepCounts = Schema.Struct({
+  running: Schema.Number,
+  failed: Schema.Number,
+  /** Already includes `queued`. */
+  waiting: Schema.Number,
+  queued: Schema.Number,
+  succeeded: Schema.Number,
+  skipped: Schema.Number,
+});
+const TiximWorkflowReportCounts = Schema.Struct({
+  info: Schema.Number,
+  success: Schema.Number,
+  warning: Schema.Number,
+  failure: Schema.Number,
+});
+/** Optional because saved links and older daemons have none of these. */
+export const TiximWorkflowRunDetails = {
+  hid: Schema.optional(Schema.String),
+  definitionName: Schema.optional(Schema.String),
+  statusMessage: Schema.optional(Schema.String),
+  waitingReason: Schema.optional(Schema.String),
+  pendingInputCount: Schema.optional(Schema.Number),
+  steps: Schema.optional(TiximWorkflowStepCounts),
+  reports: Schema.optional(TiximWorkflowReportCounts),
+  latestReport: Schema.optional(
+    Schema.Struct({
+      type: Schema.String,
+      message: Schema.String,
+      createdAt: Schema.optional(Schema.Number),
+    }),
+  ),
+  activeSteps: Schema.optional(
+    Schema.Array(Schema.Struct({ name: Schema.String, state: Schema.String })),
+  ),
+};
+
 export const TiximWorkflowRun = Schema.Struct({
   daemonId: Schema.String,
   connectionId: Schema.String,
@@ -76,6 +112,7 @@ export const TiximWorkflowRun = Schema.Struct({
   source: Schema.Literals(["agent_session", "automatic", "manual"]),
   relationship: TiximWorkflowRelationship,
   availability: Schema.Literals(["available", "unavailable"]),
+  ...TiximWorkflowRunDetails,
 });
 export type TiximWorkflowRun = typeof TiximWorkflowRun.Type;
 export const TiximWorkflowListInput = Schema.Struct({ threadId: Schema.String });
@@ -97,6 +134,8 @@ export const TiximWorkflowSearchInput = Schema.Struct({
   connectionId: Schema.String,
   query: Schema.String,
   mentionedOnly: Schema.optional(Schema.Boolean),
+  /** Ask the daemon to match its full history, which takes seconds instead of milliseconds. */
+  includeHistory: Schema.optional(Schema.Boolean),
 });
 export const TiximWorkflowLinkInput = Schema.Struct({
   threadId: Schema.String,

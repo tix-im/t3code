@@ -68,3 +68,46 @@ it("keeps identical HIDs from different daemons distinct and routes lookup to th
   expect(requests).toEqual([]);
   registry.dispose();
 });
+
+it("settles while its subscription stays open and matches runs by their HID", () => {
+  const environmentId = EnvironmentId.make("remote");
+  const threadId = ThreadId.make("thread");
+  const hid = "wf-calm-river-a12b";
+  const run: TiximWorkflowRun = {
+    daemonId: "one",
+    connectionId: "one",
+    runId: "01a1bcce-0765-7318-a86f-cd77aa320a48",
+    hid,
+    name: "Build",
+    state: "running",
+    parentRunId: "",
+    submittedAt: null,
+    startedAt: null,
+    finishedAt: null,
+    attention: false,
+    source: "manual",
+    relationship: "tracking",
+    availability: "available",
+  };
+  const reference = createWorkflowReferenceFamily({
+    // A stream atom reports waiting on every emission until the stream ends.
+    tiximWorkflows: () =>
+      Atom.make(
+        AsyncResult.success(
+          {
+            runs: [run],
+            connections: [{ id: "two", label: "Two", daemonId: "two", available: true }],
+          },
+          { waiting: true },
+        ),
+      ),
+    tiximWorkflowSearch: () =>
+      Atom.make(AsyncResult.success({ runs: [{ ...run, daemonId: "two" }], connections: [] })),
+  });
+  const registry = AtomRegistry.make();
+  const result = registry.get(reference(environmentId)(threadId)(hid));
+  expect(result.loading).toBe(false);
+  expect(result.linked.map((value) => value.daemonId)).toEqual(["one"]);
+  expect(result.runs.map((value) => value.daemonId)).toEqual(["one", "two"]);
+  registry.dispose();
+});

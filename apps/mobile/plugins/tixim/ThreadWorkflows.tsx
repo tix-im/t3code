@@ -96,7 +96,7 @@ export function ThreadWorkflows({
           {error ? <AppText accessibilityRole="alert">{error}</AppText> : null}
           {runs.length === 0 ? (
             <AppText>
-              {live.isPending || reference.loading
+              {(live.isPending && live.data === null) || reference.loading
                 ? "Loading workflows…"
                 : reference.unavailable
                   ? "Workflow information is unavailable."

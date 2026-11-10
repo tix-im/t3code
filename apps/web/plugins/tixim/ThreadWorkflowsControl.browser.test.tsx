@@ -6,7 +6,7 @@ import {
   type TiximWorkflowSearchInput,
 } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 import "~/index.css";
 import { render as renderUi } from "../../test/render";
 
@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   candidates: [] as TiximWorkflowRun[],
   connections: [] as TiximWorkflowConnection[],
   queries: [] as TiximWorkflowSearchInput[],
+  pendingQuery: null as string | null,
   changeLink: vi.fn(),
   refresh: vi.fn(),
 }));
@@ -43,7 +44,8 @@ vi.mock(import("../../src/state/query"), async (original) => ({
         connections: state.connections,
       },
       error: null,
-      isPending: false,
+      // A stream atom reports waiting on every emission until the stream ends.
+      isPending: query?.kind === "list" || query?.input.query === state.pendingQuery,
       refresh: state.refresh,
     };
   }) as never,
@@ -87,16 +89,17 @@ it("attaches a suggested dependency from the selected daemon and searches withou
   );
   await screen.getByRole("button", { name: "Attach workflow", exact: true }).click();
   await expect.element(page.getByText("Mentioned in this chat", { exact: true })).toBeVisible();
-  expect(state.queries.at(-1)).toMatchObject({
+  expect(state.queries).toContainEqual({
     threadId: "thread",
     connectionId: "connection",
+    query: "",
     mentionedOnly: true,
   });
   expect(state.changeLink).not.toHaveBeenCalled();
-  const picker = page.getByRole("combobox", { name: "Relationship", exact: true });
-  await expect.element(picker).toHaveValue("untracked");
-  await picker.selectOptions("waiting_on");
-  await page.getByRole("button", { name: /^Other daemon/ }).click();
+  await expect.element(page.getByRole("button", { name: "Attach as Untracked" })).toBeVisible();
+  await page.getByRole("button", { name: /^Attach as/ }).click();
+  await page.getByRole("menuitemradio", { name: "Waiting on" }).click();
+  await page.getByRole("option", { name: /^Other daemon/ }).click();
   expect(state.changeLink).toHaveBeenCalledWith({
     environmentId: "env",
     input: {
@@ -109,17 +112,44 @@ it("attaches a suggested dependency from the selected daemon and searches withou
     },
   });
   await expect
-    .element(page.getByRole("textbox", { name: "Search workflow runs" }))
+    .element(page.getByRole("combobox", { name: "Search workflow runs" }))
     .not.toBeInTheDocument();
   expect(state.refresh).toHaveBeenCalledOnce();
   await screen.getByRole("button", { name: "Attach workflow", exact: true }).click();
-  await page.getByRole("textbox", { name: "Search workflow runs" }).fill("river");
+  state.candidates = [];
+  await page.getByRole("combobox", { name: "Search workflow runs" }).fill("river");
   await expect
     .poll(() => state.queries.at(-1))
     .toMatchObject({ query: "river", mentionedOnly: false });
+
+  state.candidates = [run("two", "Late match")];
+  state.pendingQuery = "river";
+  await screen.rerender(
+    <ThreadWorkflowsControl
+      environmentId={EnvironmentId.make("env")}
+      threadId={ThreadId.make("thread")}
+      isServerThread
+      displayMode="panel"
+    />,
+  );
+  await expect.element(page.getByRole("option", { name: /^Late match/ })).toBeVisible();
+  await userEvent.keyboard("{Enter}");
+  expect(state.changeLink).toHaveBeenCalledOnce();
+
+  state.pendingQuery = null;
+  await screen.rerender(
+    <ThreadWorkflowsControl
+      environmentId={EnvironmentId.make("env")}
+      threadId={ThreadId.make("thread")}
+      isServerThread
+      displayMode="panel"
+    />,
+  );
+  await userEvent.keyboard("{Enter}");
+  await expect.poll(() => state.changeLink.mock.calls.length).toBe(2);
 });
 
-it("keeps a loading connection selectable and retries an unavailable connection before searching", async () => {
+it("searches a connection still being checked and retries one that is unavailable", async () => {
   state.runs = [];
   state.candidates = [];
   state.connections = [
@@ -137,12 +167,18 @@ it("keeps a loading connection selectable and retries an unavailable connection 
     />,
   );
   await screen.getByRole("button", { name: "Attach workflow", exact: true }).click();
-  await expect.element(page.getByRole("status")).toBeVisible();
+  await expect.element(page.getByText("No recent runs on Local.")).toBeVisible();
+  expect(state.queries).toContainEqual({
+    threadId: "thread",
+    connectionId: "connection",
+    query: "",
+    mentionedOnly: false,
+  });
   await page.getByRole("button", { name: "Tixim connection", exact: true }).click();
   await page.getByRole("menuitemradio", { name: /Local/ }).click();
-  expect(state.queries).toHaveLength(0);
 
   state.connections = [{ id: "connection", label: "Local", daemonId: "", available: false }];
+  state.queries = [];
   await screen.rerender(
     <ThreadWorkflowsControl
       environmentId={EnvironmentId.make("env")}
@@ -164,6 +200,5 @@ it("keeps a loading connection selectable and retries an unavailable connection 
       displayMode="panel"
     />,
   );
-  await expect.element(page.getByText("Mentioned in this chat", { exact: true })).toBeVisible();
-  expect(state.queries.at(-1)).toMatchObject({ connectionId: "connection", mentionedOnly: true });
+  await expect.poll(() => state.queries.at(-1)).toMatchObject({ connectionId: "connection" });
 });

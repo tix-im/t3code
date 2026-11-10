@@ -2,8 +2,8 @@ import { RegistryContext } from "@effect/atom-react";
 import {
   type EnvironmentId,
   type ThreadId,
+  type TiximWorkflowRelationship,
   type TiximWorkflowRun,
-  TiximWorkflowRelationship,
   WS_METHODS,
 } from "@t3tools/contracts";
 import { runStreamGuarded } from "@t3tools/client-runtime/rpc";
@@ -12,61 +12,44 @@ import {
   runAtomCommand,
   runStreamInEnvironment,
 } from "@t3tools/client-runtime/state/runtime";
+import { htmlRenderThemeMessage } from "@t3tools/shared/htmlRender";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { ArrowLeftIcon, PlusIcon, WorkflowIcon } from "lucide-react";
 import { useContext, useEffect, useRef, useState } from "react";
 import {
+  Button,
+  cn,
   connectionAtomRuntime,
-  useEnvironmentQuery,
-  useAtomCommand,
   Dialog,
   DialogPopup,
   DialogTitle,
-  Button,
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
+  THREAD_DETAILS_PANEL_ICON_CLASS,
+  ThreadDetailsControl,
+  ThreadDetailsSection,
   Tooltip,
   TooltipPopup,
   TooltipTrigger,
-  Popover,
-  PopoverTrigger,
-  PopoverPopup,
-  PopoverTitle,
-  Menu,
-  MenuTrigger,
-  MenuPopup,
-  MenuItem,
-  MenuSeparator,
-  MenuRadioGroup,
-  MenuRadioItem,
-  ThreadDetailsSection,
+  useAtomCommand,
+  useEnvironmentQuery,
+  useHtmlRenderTheme,
 } from "../../src/plugins/host";
-import {
-  WorkflowIcon,
-  PlusIcon,
-  EllipsisIcon,
-  SearchIcon,
-  PlugIcon,
-  RefreshCwIcon,
-} from "lucide-react";
 import { workflowEnvironment } from "./state";
+import { WorkflowAttachPicker } from "./WorkflowAttachPicker";
+import { WorkflowRunRow } from "./WorkflowRunRow";
+import { WorkflowTally } from "./WorkflowTally";
+import {
+  isFinishedWorkflowState,
+  WORKFLOW_TONE_CLASS,
+  workflowRunCounts,
+  workflowRunKey,
+  workflowRunTitle,
+  workflowStateGlyph,
+} from "./workflowPresentation";
 
-const terminal = new Set(["completed", "failed", "cancelled", "skipped"]);
-const isRelationship = Schema.is(TiximWorkflowRelationship);
-const relationshipLabels: Record<TiximWorkflowRelationship, string> = {
-  owner: "Owner",
-  tracking: "Tracking",
-  waiting_on: "Waiting on",
-  untracked: "Untracked",
-};
-const statusColors: Record<string, string> = {
-  pending: "text-warning",
-  queued: "text-warning",
-  running: "text-info",
-  paused: "text-warning",
-  suspended: "text-warning",
-  completed: "text-success",
-  failed: "text-destructive",
-};
 const writeMethods = new Set([
   "CancelWorkflow",
   "SuspendWorkflowRun",
@@ -138,6 +121,12 @@ function FlowFrame({
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const registry = useContext(RegistryContext);
+  const theme = useHtmlRenderTheme();
+  const [loads, setLoads] = useState(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Posts the theme to the sandboxed iframe on each load and change, kept apart from the effect below so a theme change does not abort its streams.
+  useEffect(() => {
+    if (loads > 0) frame.current?.contentWindow?.postMessage(htmlRenderThemeMessage(theme), "*");
+  }, [loads, theme]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keeps the iframe message port and its cancellable RPC streams alive only while this run view is mounted.
   useEffect(() => {
     const pending = new Map<number, AbortController>();
@@ -196,6 +185,7 @@ function FlowFrame({
       };
       port.start();
       frame.current?.contentWindow?.postMessage({ type: "t3-flow-port" }, "*", [channel.port2]);
+      setLoads((count) => count + 1);
     };
     window.addEventListener("message", ready);
     return () => {
@@ -208,10 +198,50 @@ function FlowFrame({
       ref={frame}
       title={`Tix Flow: ${run.name}`}
       sandbox="allow-scripts"
-      className="min-h-0 w-full flex-1 border-0 bg-background"
+      className={cn("min-h-0 w-full flex-1 border-0 bg-background", loads === 0 && "invisible")}
+      style={{ colorScheme: theme.appearance }}
       src={`/tix-flow/index.html#/runs/${encodeURIComponent(run.runId)}`}
     />
   );
+}
+
+function DialogRunTitle({ run }: { run: TiximWorkflowRun }) {
+  const glyph = workflowStateGlyph(run.availability === "available" ? run.state : "unavailable");
+  const { icon: Icon } = glyph;
+  return (
+    <>
+      <Icon aria-hidden className={cn("size-4 shrink-0", WORKFLOW_TONE_CLASS[glyph.tone])} />
+      <DialogTitle className="min-w-0">
+        <span className="block truncate py-0.5">{workflowRunTitle(run)}</span>
+      </DialogTitle>
+      <span className={cn("shrink-0 text-xs", WORKFLOW_TONE_CLASS[glyph.tone])}>{glyph.label}</span>
+    </>
+  );
+}
+
+function orderedRuns(runs: ReadonlyArray<TiximWorkflowRun>) {
+  const sorted = runs.toSorted(
+    (a, b) =>
+      Number(isFinishedWorkflowState(a.state)) - Number(isFinishedWorkflowState(b.state)) ||
+      (b.submittedAt ?? 0) - (a.submittedAt ?? 0),
+  );
+  const seen = new Set<string>();
+  const ordered: Array<{ run: TiximWorkflowRun; depth: number }> = [];
+  const visit = (run: TiximWorkflowRun, depth: number) => {
+    const key = workflowRunKey(run);
+    if (seen.has(key)) return;
+    seen.add(key);
+    ordered.push({ run, depth: Math.min(depth, 4) });
+    for (const child of sorted)
+      if (child.daemonId === run.daemonId && child.parentRunId === run.runId)
+        visit(child, depth + 1);
+  };
+  for (const run of sorted)
+    if (!sorted.some((other) => other.daemonId === run.daemonId && other.runId === run.parentRunId))
+      visit(run, 0);
+  // A parent cycle has no root, and its runs must still be listed.
+  for (const run of sorted) visit(run, 0);
+  return ordered;
 }
 
 export function ThreadWorkflowsControl({
@@ -227,81 +257,33 @@ export function ThreadWorkflowsControl({
 }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<TiximWorkflowRun | null>(null);
-  const [connectionId, setConnectionId] = useState("");
-  const [query, setQuery] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [relationship, setRelationship] = useState<TiximWorkflowRelationship>("untracked");
   const [attaching, setAttaching] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the debounce timer while the search input changes or unmounts.
-  useEffect(() => {
-    const timer = setTimeout(() => setSearchQuery(query.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [query]);
   const live = useEnvironmentQuery(
     isServerThread
       ? workflowEnvironment.tiximWorkflows({ environmentId, input: { threadId } })
       : null,
   );
-  const connections = live.data?.connections ?? [];
-  const selectedConnection =
-    connections.find((value) => value.id === connectionId) ??
-    connections.find((value) => value.available) ??
-    connections[0];
-  const currentConnection = selectedConnection?.id ?? "";
-  const connectionLoading = live.isPending || selectedConnection?.loading === true;
-  const connectionDescription = selectedConnection
-    ? `${selectedConnection.label} · ${connectionLoading ? "Loading workflows" : selectedConnection.available ? "Connected" : "Unavailable"}`
-    : live.isPending
-      ? "Loading connections"
-      : "No connections configured";
-  const search = useEnvironmentQuery(
-    attaching && selectedConnection?.available && !connectionLoading
-      ? workflowEnvironment.tiximWorkflowSearch({
-          environmentId,
-          input: {
-            threadId,
-            connectionId: currentConnection,
-            query: searchQuery,
-            mentionedOnly: searchQuery === "",
-          },
-        })
-      : null,
-  );
   const changeLink = useAtomCommand(workflowEnvironment.tiximWorkflowLink, {
     reportFailure: false,
   });
+  const connections = live.data?.connections ?? [];
   const runs = live.data?.runs ?? [];
+  // A subscription reports pending on every emission, so only missing data means loading.
+  const loading = live.isPending && live.data === null;
+  const counts = workflowRunCounts(runs);
+  const statusSummary = counts.map(({ count, label }) => `${count} ${label}`).join(", ");
   const active = runs.filter(
-    (run) => run.availability === "available" && !terminal.has(run.state),
+    (run) => run.availability === "available" && !isFinishedWorkflowState(run.state),
   ).length;
   const attention = runs.some((run) => run.attention);
-  const counts = new Map<string, number>();
-  for (const run of runs) {
-    const status = run.availability === "available" ? run.state : "unavailable";
-    counts.set(status, (counts.get(status) ?? 0) + 1);
-  }
-  const statusSummary = Array.from(counts, ([status, count]) => `${count} ${status}`).join(", ");
-  const statusCounts = Array.from(counts)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([status, count]) => (
-      <span
-        key={status}
-        className={`text-xs tabular-nums ${statusColors[status] ?? "text-muted-foreground"}`}
-      >
-        <span aria-hidden>{count}</span>
-        <span className="sr-only">
-          {count} {status}
-        </span>
-      </span>
-    ));
   const mutate = async (
     run: TiximWorkflowRun,
     attach: boolean,
     nextRelationship?: TiximWorkflowRelationship,
   ) => {
-    setBusy(true);
+    setBusyKey(workflowRunKey(run));
     setError(null);
     const result = await changeLink({
       environmentId,
@@ -314,7 +296,7 @@ export function ThreadWorkflowsControl({
         ...(nextRelationship === undefined ? {} : { relationship: nextRelationship }),
       },
     });
-    setBusy(false);
+    setBusyKey(null);
     if (result._tag === "Failure")
       setError("Could not update the workflow link. Check the connection and your permissions.");
     else {
@@ -322,86 +304,14 @@ export function ThreadWorkflowsControl({
       live.refresh();
     }
   };
-  const row = (run: TiximWorkflowRun, depth = 0) => (
-    <div
-      key={`${run.daemonId}/${run.runId}`}
-      className="flex min-w-0 items-start gap-2 rounded-md px-1.5 py-1.5 hover:bg-accent/40"
-      style={{ marginLeft: depth * 16 }}
-    >
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left"
-        disabled={run.availability !== "available"}
-        onClick={() => setSelected(run)}
-      >
-        <strong className="block truncate text-sm">{run.name || run.runId}</strong>
-        <span className="text-xs text-muted-foreground">
-          <span className={run.availability === "available" ? statusColors[run.state] : undefined}>
-            {run.availability === "available" ? run.state : "Unavailable"}
-          </span>{" "}
-          · {run.relationship.replaceAll("_", " ")} · {run.source.replaceAll("_", " ")} ·{" "}
-          {run.startedAt ? new Date(run.startedAt * 1000).toLocaleString() : "Not started"}
-          {run.finishedAt ? ` → ${new Date(run.finishedAt * 1000).toLocaleString()}` : ""}
-        </span>
-      </button>
-      <Menu>
-        <MenuTrigger
-          render={
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              disabled={busy}
-              aria-label={`Manage ${run.name || run.runId}`}
-            />
-          }
-        >
-          <EllipsisIcon aria-hidden />
-        </MenuTrigger>
-        <MenuPopup align="end">
-          {TiximWorkflowRelationship.literals.map((value) => (
-            <MenuItem
-              key={value}
-              disabled={run.relationship === value || run.availability !== "available"}
-              onClick={() => void mutate(run, true, value)}
-            >
-              {relationshipLabels[value]}
-              {run.relationship === value ? " ✓" : ""}
-            </MenuItem>
-          ))}
-          <MenuSeparator />
-          <MenuItem onClick={() => void mutate(run, false)}>Detach</MenuItem>
-        </MenuPopup>
-      </Menu>
-    </div>
-  );
-  const group = (hosting: boolean) => {
-    const values = runs.filter((run) => (run.source === "agent_session") === hosting);
-    const seen = new Set<string>();
-    const result: React.ReactNode[] = [];
-    const visit = (run: TiximWorkflowRun, depth: number) => {
-      const key = `${run.daemonId}/${run.runId}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      result.push(row(run, Math.min(depth, 8)));
-      for (const child of values)
-        if (child.daemonId === run.daemonId && child.parentRunId === run.runId)
-          visit(child, depth + 1);
-    };
-    for (const run of values)
-      if (
-        !values.some((other) => other.daemonId === run.daemonId && other.runId === run.parentRunId)
-      )
-        visit(run, 0);
-    for (const run of values) visit(run, 0);
-    return result.length ? result : <p className="text-sm text-muted-foreground">None attached.</p>;
-  };
-  const candidates =
-    search.data?.runs.filter(
-      (candidate) =>
-        !runs.some((run) => run.daemonId === candidate.daemonId && run.runId === candidate.runId),
-    ) ?? [];
   const attachControl = (
-    <Popover open={attaching} onOpenChange={setAttaching}>
+    <Popover
+      open={attaching}
+      onOpenChange={(value) => {
+        setAttaching(value);
+        if (value) setError(null);
+      }}
+    >
       <PopoverTrigger
         render={
           <Button
@@ -415,175 +325,101 @@ export function ThreadWorkflowsControl({
       >
         <PlusIcon aria-hidden />
       </PopoverTrigger>
-      <PopoverPopup align="end" className="w-80 max-w-[calc(100vw-2rem)]" padding="compact">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <PopoverTitle>Attach workflow</PopoverTitle>
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label="Tixim connection"
-                    title={`Tixim connection: ${connectionDescription}`}
-                  />
-                }
-              >
-                <span className="relative" aria-hidden>
-                  <PlugIcon />
-                  <span
-                    className={`absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-popover ${connectionLoading ? "bg-warning" : selectedConnection?.available ? "bg-success" : "bg-destructive"}`}
-                  />
-                </span>
-              </MenuTrigger>
-              <MenuPopup align="end">
-                <MenuRadioGroup
-                  value={currentConnection}
-                  onValueChange={(id) => {
-                    setConnectionId(id);
-                    const next = connections.find((value) => value.id === id);
-                    if (next && !next.available && !next.loading) live.refresh();
-                  }}
-                  aria-label="Tixim connections"
-                >
-                  {connections.map((value) => (
-                    <MenuRadioItem key={value.id} value={value.id}>
-                      <span className="block">{value.label}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {value.loading
-                          ? "Loading workflows…"
-                          : value.available
-                            ? "Connected"
-                            : "Unavailable"}
-                      </span>
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
-                {connections.length === 0 && <MenuItem disabled>{connectionDescription}</MenuItem>}
-                <MenuSeparator />
-                <MenuItem disabled={connectionLoading} onClick={live.refresh}>
-                  <RefreshCwIcon aria-hidden /> Reload connections
-                </MenuItem>
-              </MenuPopup>
-            </Menu>
-          </div>
-          <div className="flex items-center gap-2 rounded border px-2">
-            <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <input
-              aria-label="Search workflow runs"
-              className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none"
-              placeholder="Search by name or run ID…"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
-          <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            Relationship
-            <select
-              className="rounded border bg-background px-2 py-1 text-foreground"
-              value={relationship}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (isRelationship(value)) setRelationship(value);
-              }}
-            >
-              {TiximWorkflowRelationship.literals.toReversed().map((value) => (
-                <option key={value} value={value}>
-                  {relationshipLabels[value]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {error && (
-            <p role="alert" className="text-xs text-destructive">
-              {error}
-            </p>
-          )}
-          {search.error && (
-            <p role="alert" className="text-xs text-destructive">
-              {search.error}
-            </p>
-          )}
-          {live.error && (
-            <p role="alert" className="text-xs text-destructive">
-              {live.error}
-            </p>
-          )}
-          {connectionLoading ? (
-            <p role="status" className="text-xs text-muted-foreground">
-              {selectedConnection
-                ? `Loading workflows from ${selectedConnection.label}…`
-                : "Loading connections…"}
-            </p>
-          ) : !currentConnection ? (
-            <p className="text-xs text-muted-foreground">
-              Configure a Tixim connection in Settings.
-            </p>
-          ) : !selectedConnection?.available ? (
-            <div className="space-y-1">
-              <p role="alert" className="text-xs text-muted-foreground">
-                {selectedConnection?.label}:{" "}
-                {selectedConnection?.error ??
-                  "Connection unavailable. Check the connection and your permissions."}
-              </p>
-              <Button size="xs" variant="ghost" onClick={live.refresh}>
-                <RefreshCwIcon aria-hidden /> Retry connection
-              </Button>
-            </div>
-          ) : (
-            <div className="max-h-64 space-y-1 overflow-y-auto">
-              <p className="pb-1 text-xs font-medium text-muted-foreground">
-                {searchQuery ? "Matching workflows" : "Mentioned in this chat"}
-              </p>
-              {search.isPending || searchQuery !== query.trim() ? (
-                <p className="text-xs text-muted-foreground">Searching…</p>
-              ) : candidates.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {searchQuery
-                    ? "No unattached workflows found."
-                    : "No unattached mentions found. Search by name or exact wf-… run ID."}
-                </p>
-              ) : (
-                candidates.map((run) => (
-                  <button
-                    key={`${run.daemonId}/${run.runId}`}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void mutate(run, true, relationship)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-accent disabled:opacity-50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">{run.name || run.runId}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {run.runId} · <span className={statusColors[run.state]}>{run.state}</span>
-                      </span>
-                    </div>
-                    <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+      <PopoverPopup align="end" width="md" padding="none">
+        <WorkflowAttachPicker
+          environmentId={environmentId}
+          threadId={threadId}
+          connections={connections}
+          connectionsError={live.error}
+          connectionsLoading={loading || connections.some((value) => value.loading)}
+          attached={runs}
+          attachingKey={busyKey}
+          error={error}
+          onAttach={(run, relationship) => void mutate(run, true, relationship)}
+          onRefresh={live.refresh}
+        />
       </PopoverPopup>
     </Popover>
   );
+  const runList = (items: ReturnType<typeof orderedRuns>) => (
+    <ul className="m-0 list-none p-0">
+      {items.map(({ run, depth }) => (
+        <WorkflowRunRow
+          key={workflowRunKey(run)}
+          run={run}
+          depth={depth}
+          refreshing={connections.some((value) => value.id === run.connectionId && value.loading)}
+          busy={busyKey !== null}
+          onOpen={setSelected}
+          onRelationshipChange={(target, value) => void mutate(target, true, value)}
+          onDetach={(target) => void mutate(target, false)}
+        />
+      ))}
+    </ul>
+  );
+  const groupHeading = (title: string) => (
+    <h4 className="m-0 px-2.5 pt-1.5 pb-0.5 text-2xs font-medium text-muted-foreground select-none">
+      {title}
+    </h4>
+  );
+  const hosting = orderedRuns(runs.filter((run) => run.source === "agent_session"));
+  const tasks = orderedRuns(runs.filter((run) => run.source !== "agent_session"));
+  const bothGroups = hosting.length > 0 && tasks.length > 0;
+  const nothingToShow =
+    displayMode === "panel" && runs.length === 0 && connections.length === 0 && !live.error;
+  const alert = live.error ?? (attaching ? null : error);
   const overview = (
     <div
       data-plugin-thread-details-list
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto"
+      className="flex min-h-0 flex-1 flex-col overflow-auto"
       style={displayMode === "panel" ? { maxHeight: 360 } : undefined}
     >
-      {(error || live.error) && <p role="alert">{error || live.error}</p>}
-      {live.isPending && !live.data && <p>Loading workflows…</p>}
-      {displayMode === "header" && <div className="flex justify-end">{attachControl}</div>}
-      <h3 className="font-semibold">Agent sessions</h3>
-      {group(true)}
-      <h3 className="font-semibold">Task workflows</h3>
-      {group(false)}
+      {nothingToShow ? null : (
+        <>
+          {alert ? (
+            <p role="alert" className="m-0 px-2.5 py-1 text-xs text-destructive-foreground">
+              {alert}
+            </p>
+          ) : null}
+          {loading && displayMode === "header" ? (
+            <p role="status" className="m-0 px-2.5 py-1 text-xs text-muted-foreground">
+              Loading workflows…
+            </p>
+          ) : null}
+          {displayMode === "header" ? (
+            <div className="flex justify-end">{attachControl}</div>
+          ) : null}
+          {hosting.length > 0 ? (
+            <>
+              {bothGroups ? groupHeading("Agent sessions") : null}
+              {runList(hosting)}
+            </>
+          ) : null}
+          {tasks.length > 0 ? (
+            <>
+              {bothGroups ? groupHeading("Task workflows") : null}
+              {runList(tasks)}
+            </>
+          ) : null}
+          {runs.length === 0 && !alert && !loading ? (
+            <ThreadDetailsControl
+              size="sm"
+              variant="ghost"
+              part="row"
+              disabled={!isServerThread}
+              onClick={() => setAttaching(true)}
+            >
+              <PlusIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+              <span className="min-w-0 truncate">Attach a workflow</span>
+            </ThreadDetailsControl>
+          ) : null}
+        </>
+      )}
     </div>
   );
+  const selectedRun = selected
+    ? (runs.find((run) => workflowRunKey(run) === workflowRunKey(selected)) ?? selected)
+    : null;
   return (
     <>
       {displayMode === "panel" ? (
@@ -592,12 +428,14 @@ export function ThreadWorkflowsControl({
           title="Workflows"
           actions={
             <div className="flex items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger render={<div className="flex items-center gap-1.5" />}>
-                  {statusCounts}
-                </TooltipTrigger>
-                <TooltipPopup>{statusSummary || "No workflows attached"}</TooltipPopup>
-              </Tooltip>
+              {counts.length > 0 ? (
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex text-2xs" />}>
+                    <WorkflowTally counts={counts} />
+                  </TooltipTrigger>
+                  <TooltipPopup>{statusSummary}</TooltipPopup>
+                </Tooltip>
+              ) : null}
               {attachControl}
             </div>
           }
@@ -617,7 +455,7 @@ export function ThreadWorkflowsControl({
             }
           >
             <WorkflowIcon className="size-4" aria-hidden />
-            {statusCounts}
+            <WorkflowTally counts={counts} />
             {attention && <span className="size-1.5 rounded-full bg-warning" aria-hidden />}
           </TooltipTrigger>
           <TooltipPopup>
@@ -637,16 +475,32 @@ export function ThreadWorkflowsControl({
         }}
       >
         <DialogPopup className="flex h-[85vh] w-[min(1200px,95vw)] max-w-none flex-col">
-          <DialogTitle>Thread workflows</DialogTitle>
-          {selected ? (
-            <>
-              <Button className="self-start" variant="ghost" onClick={() => setSelected(null)}>
-                {displayMode === "panel" ? "← Thread details" : "← Workflow overview"}
+          <div className="flex min-w-0 items-center gap-2.5 border-b border-border/65 py-2.5 ps-4 pe-12">
+            {selected && displayMode === "header" ? (
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Back to workflow overview"
+                onClick={() => setSelected(null)}
+              >
+                <ArrowLeftIcon aria-hidden />
               </Button>
-              <FlowFrame environmentId={environmentId} threadId={threadId} run={selected} />
-            </>
+            ) : null}
+            {selectedRun ? (
+              <DialogRunTitle run={selectedRun} />
+            ) : (
+              <DialogTitle>Thread workflows</DialogTitle>
+            )}
+          </div>
+          {selected ? (
+            <FlowFrame
+              key={workflowRunKey(selected)}
+              environmentId={environmentId}
+              threadId={threadId}
+              run={selected}
+            />
           ) : (
-            overview
+            <div className="flex min-h-0 flex-1 flex-col p-2">{overview}</div>
           )}
         </DialogPopup>
       </Dialog>

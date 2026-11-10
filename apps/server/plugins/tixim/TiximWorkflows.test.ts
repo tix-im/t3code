@@ -266,40 +266,155 @@ describe("thread workflows", () => {
       ),
     ]).toEqual(["wf-calm-river-a12b", "wf-fresh-bay-321a"]);
   });
-  it.effect("suggests only accessible exact mentions from this chat without attaching them", () =>
-    Effect.gen(function* () {
+  it.effect("suggests only accessible exact mentions from this chat without attaching them", () => {
+    const searches: unknown[] = [];
+    return Effect.gen(function* () {
       yield* setup;
       const sql = yield* SqlClient.SqlClient;
       yield* sql`INSERT INTO orchestration_v2_projection_messages VALUES
       ('thread-a', 'assistant', ${encode({ text: "Submitted wf-calm-river-a12b. Also wf-private-bay-1111." })}),
       ('thread-a', 'user', ${encode({ text: "Watch wf-calm-river-a12b" })}),
       ('thread-b', 'assistant', ${encode({ text: "wf-other-chat-1234" })})`;
-      const result = yield* search({
+      const mentioned = {
         threadId: "thread-a",
         connectionId: "tix-one",
         query: "",
         mentionedOnly: true,
-      });
-      expect(result.runs.map((r) => r.runId)).toEqual(["wf-calm-river-a12b"]);
+      };
+      const result = yield* search(mentioned);
+      expect(searches).toEqual([{ references: ["wf-calm-river-a12b", "wf-private-bay-1111"] }]);
+      expect(result.runs.map((r) => r.runId)).toEqual(["calm-uuid"]);
       expect(result.runs[0]?.relationship).toBe("tracking");
       expect((yield* list("thread-a")).runs).toHaveLength(0);
+      yield* sql`DELETE FROM orchestration_v2_projection_messages`;
+      searches.length = 0;
+      expect((yield* search(mentioned)).runs).toEqual([]);
+      expect(searches).toEqual([]);
     }).pipe(
       Effect.provide(
         Layer.merge(
           base,
-          runner(() =>
-            encode({
+          runner((input) => {
+            if (input.args.at(-1) === "search") searches.push(JSON.parse(input.stdin ?? "{}"));
+            return encode({
               daemonId: "one",
               runs: [
-                run("wf-calm-river-a12b", { automatic: false }),
-                run("wf-other-chat-1234", { automatic: false }),
+                run("calm-uuid", { hid: "wf-calm-river-a12b", automatic: false }),
+                run("other-uuid", { hid: "wf-other-chat-1234", automatic: false }),
               ],
-            }),
-          ),
+            });
+          }),
         ),
       ),
-    ),
+    );
+  });
+  it.effect(
+    "answers searches from a cached recent page and asks the daemon only when needed",
+    () => {
+      const searches: unknown[] = [];
+      const layer = Layer.merge(
+        base,
+        runner((input) => {
+          if (input.args.at(-1) === "search") searches.push(JSON.parse(input.stdin ?? "{}"));
+          return encode({
+            daemonId: "one",
+            runs: [
+              run("finished", {
+                hid: "wf-tidy-cove-0001",
+                definitionName: "release-train",
+                state: "completed",
+                submittedAt: 30,
+              }),
+              run("older", { hid: "wf-calm-river-a12b", submittedAt: 10 }),
+              run("newer", { hid: "wf-fresh-bay-321a", submittedAt: 20 }),
+            ],
+          });
+        }),
+      );
+      return Effect.gen(function* () {
+        yield* setup;
+        const cachedSearch = yield* TiximWorkflows.makeCachedSearch;
+        const ids = (query: string, includeHistory?: boolean) =>
+          cachedSearch({
+            threadId: "thread-a",
+            connectionId: "tix-one",
+            query,
+            ...(includeHistory === undefined ? {} : { includeHistory }),
+          }).pipe(Effect.map((result) => result.runs.map((r) => r.runId)));
+        expect(yield* ids("")).toEqual(["newer", "older", "finished"]);
+        expect(yield* ids("RELEASE")).toEqual(["finished"]);
+        expect(yield* ids("wf-calm")).toEqual(["older"]);
+        expect(searches).toEqual([{ limit: 200 }]);
+        searches.length = 0;
+        expect(yield* ids("wf-fresh-bay-321a")).toEqual(["newer"]);
+        expect(searches).toEqual([{ references: ["wf-fresh-bay-321a"] }]);
+        searches.length = 0;
+        // The daemon decides what matches, including fields a run row does not carry.
+        expect(yield* ids("Zebra", true)).toEqual(["newer", "older", "finished"]);
+        expect(searches).toEqual([{ query: "Zebra", limit: 100 }]);
+      }).pipe(Effect.provide(layer));
+    },
   );
+  it.effect("reads saved runs until they settle and keeps settled runs available", () => {
+    const requested: string[][] = [];
+    let reachable = true;
+    return Effect.gen(function* () {
+      yield* setup;
+      const binding = {
+        threadId: "thread-a",
+        connectionId: "tix-one",
+        daemonId: "daemon-one",
+        attach: true,
+      };
+      yield* link({ ...binding, runId: "settled" });
+      yield* link({ ...binding, runId: "saved-before-counts" });
+      requested.length = 0;
+      const online = yield* list("thread-a");
+      expect(requested).toEqual([["saved-before-counts"]]);
+      expect(new Map(online.runs.map((r) => [r.runId, r.availability]))).toEqual(
+        new Map([
+          ["settled", "available"],
+          ["saved-before-counts", "available"],
+        ]),
+      );
+      reachable = false;
+      expect((yield* list("thread-a")).runs.every((r) => r.availability === "unavailable")).toBe(
+        true,
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          base,
+          runner((input) => {
+            if (!reachable || !input.args.includes("one")) return "unreadable daemon response";
+            const { runIds } = JSON.parse(input.stdin ?? "{}") as { runIds: string[] };
+            requested.push(runIds);
+            return encode({
+              daemonId: "daemon-one",
+              runs: runIds.map((id) =>
+                run(id, {
+                  automatic: false,
+                  state: "completed",
+                  ...(id === "settled"
+                    ? {
+                        steps: {
+                          running: 0,
+                          failed: 0,
+                          waiting: 0,
+                          queued: 0,
+                          succeeded: 3,
+                          skipped: 0,
+                        },
+                      }
+                    : {}),
+                }),
+              ),
+            });
+          }),
+        ),
+      ),
+    );
+  });
   it.effect(
     "preserves independent relationships across reconciliation, duplicate attachment and shared links",
     () =>
