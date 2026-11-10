@@ -183,7 +183,7 @@ const isSettled = (run: TiximWorkflowRun) =>
   FINISHED_STATES.has(run.state) && run.steps !== undefined;
 
 const savedState = Effect.fn("TiximWorkflows.savedState")(function* (threadId: string) {
-  if (!(yield* threadExists(threadId))) return { previous: [], connections: [] };
+  if (!(yield* threadExists(threadId))) return { previous: [], connections: [], snoozed: false };
   const sql = yield* SqlClient.SqlClient;
   const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
   const previous = yield* sql<{
@@ -201,8 +201,10 @@ const savedState = Effect.fn("TiximWorkflows.savedState")(function* (threadId: s
     ...previous.map((row) => row.connection_id),
   ]);
   const providers = new Map(Object.entries(settings.providerInstances));
+  const snoozes = yield* sql`SELECT 1 FROM tixim_workflow_snoozes WHERE thread_id = ${threadId}`;
   return {
     previous,
+    snoozed: snoozes.length > 0,
     connections: Array.from(ids, (id): TiximWorkflowConnection => ({
       id,
       label: providers.get(id)?.displayName ?? id,
@@ -214,7 +216,7 @@ const savedState = Effect.fn("TiximWorkflows.savedState")(function* (threadId: s
 });
 
 export const list = Effect.fn(function* (threadId: string) {
-  const { previous, connections: configured } = yield* savedState(threadId);
+  const { previous, connections: configured, snoozed } = yield* savedState(threadId);
   const sql = yield* SqlClient.SqlClient;
   const attached = previous
     .filter((row) => !row.excluded)
@@ -307,6 +309,7 @@ export const list = Effect.fn(function* (threadId: string) {
       };
     }),
     connections,
+    ...(snoozed ? { snoozed } : {}),
   };
 });
 
@@ -527,7 +530,7 @@ const observe = Effect.fn("TiximWorkflows.observe")(function* (
 export const live = (threadId: string) =>
   Stream.concat(
     Stream.fromEffect(safe(savedState(threadId))).pipe(
-      Stream.map(({ previous, connections }) => ({
+      Stream.map(({ previous, connections, snoozed }) => ({
         runs: previous
           .filter((row) => !row.excluded)
           .map((row) => ({
@@ -535,6 +538,7 @@ export const live = (threadId: string) =>
             availability: "unavailable" as const,
           })),
         connections,
+        ...(snoozed ? { snoozed } : {}),
       })),
     ),
     Stream.fromEffectSchedule(safe(list(threadId)), Schedule.spaced("5 seconds")),

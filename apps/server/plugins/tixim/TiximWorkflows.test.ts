@@ -15,6 +15,7 @@ import Migration from "./migrations/001_TiximWorkflowLinks.ts";
 import RelationshipsMigration from "./migrations/002_TiximWorkflowRelationships.ts";
 import InactivityMigration from "./migrations/003_TiximWorkflowWaitInactivity.ts";
 import NotificationsMigration from "./migrations/004_TiximWorkflowNotifications.ts";
+import SnoozesMigration from "./migrations/005_TiximWorkflowSnoozes.ts";
 import * as TiximWorkflows from "./TiximWorkflows.ts";
 import {
   list,
@@ -48,6 +49,7 @@ const setup = Effect.gen(function* () {
   yield* Migration;
   yield* RelationshipsMigration;
   yield* NotificationsMigration;
+  yield* SnoozesMigration;
   yield* sql`CREATE TABLE orchestration_v2_projection_messages(thread_id TEXT, role TEXT, payload_json TEXT)`;
 });
 const base = Layer.mergeAll(

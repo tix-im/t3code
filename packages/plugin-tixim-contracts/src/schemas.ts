@@ -152,6 +152,8 @@ export type TiximWorkflowConnection = typeof TiximWorkflowConnection.Type;
 export const TiximWorkflowListResult = Schema.Struct({
   runs: Schema.Array(TiximWorkflowRun),
   connections: Schema.Array(TiximWorkflowConnection),
+  /** The thread is snoozed until its attached workflows settle. */
+  snoozed: Schema.optional(Schema.Boolean),
 });
 export const TiximWorkflowSearchInput = Schema.Struct({
   threadId: Schema.String,
@@ -183,6 +185,15 @@ export const TiximWorkflowWaitResult = Schema.Struct({
   runCount: Schema.Int,
   deadline: Schema.NullOr(Schema.Number),
   next: Schema.String,
+});
+export const TiximWorkflowSnoozeInput = Schema.Struct({
+  threadId: Schema.String,
+  snoozing: Schema.Boolean,
+});
+export type TiximWorkflowSnoozeInput = typeof TiximWorkflowSnoozeInput.Type;
+export const TiximWorkflowSnoozeResult = Schema.Struct({
+  status: Schema.Literals(["snoozed", "settled", "cancelled"]),
+  runCount: Schema.Int,
 });
 export const TiximWorkflowNotification = Schema.Struct({
   daemonId: Schema.String,

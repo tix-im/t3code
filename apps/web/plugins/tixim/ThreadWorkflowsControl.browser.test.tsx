@@ -149,6 +149,32 @@ it("attaches a suggested dependency from the selected daemon and searches withou
   await expect.poll(() => state.changeLink.mock.calls.length).toBe(2);
 });
 
+it("keeps the row menu usable under the hover card and opens the run from its link", async () => {
+  state.connections = [{ id: "connection", label: "Local", daemonId: "one", available: true }];
+  state.runs = [run("one", "Hovered run")];
+  state.changeLink.mockReset();
+  await using screen = await renderUi(
+    <ThreadWorkflowsControl
+      environmentId={EnvironmentId.make("env")}
+      threadId={ThreadId.make("thread")}
+      isServerThread
+      displayMode="panel"
+    />,
+  );
+  const row = screen.getByRole("button", { name: /^Hovered run/ });
+  const link = page.getByRole("button", { name: "Open workflow", exact: true });
+  await userEvent.hover(row);
+  await expect.element(link).toBeVisible();
+  await screen.getByRole("button", { name: "Manage Hovered run", exact: true }).click();
+  await expect.element(page.getByRole("menuitem", { name: "Detach" })).toBeVisible();
+  await userEvent.keyboard("{Escape}");
+
+  await userEvent.hover(row);
+  await link.click();
+  await expect.element(page.getByRole("dialog")).toBeVisible();
+  await expect.element(link).not.toBeInTheDocument();
+});
+
 it("searches a connection still being checked and retries one that is unavailable", async () => {
   state.runs = [];
   state.candidates = [];

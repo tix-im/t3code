@@ -15,7 +15,7 @@ import {
 import { htmlRenderThemeMessage } from "@t3tools/shared/htmlRender";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { ArrowLeftIcon, PlusIcon, WorkflowIcon } from "lucide-react";
+import { AlarmClockIcon, ArrowLeftIcon, PlusIcon, WorkflowIcon } from "lucide-react";
 import { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
@@ -27,8 +27,6 @@ import {
   Popover,
   PopoverPopup,
   PopoverTrigger,
-  THREAD_DETAILS_PANEL_ICON_CLASS,
-  ThreadDetailsControl,
   ThreadDetailsSection,
   Tooltip,
   TooltipPopup,
@@ -268,6 +266,10 @@ export function ThreadWorkflowsControl({
   const changeLink = useAtomCommand(workflowEnvironment.tiximWorkflowLink, {
     reportFailure: false,
   });
+  const changeSnooze = useAtomCommand(workflowEnvironment.tiximWorkflowSnooze, {
+    reportFailure: false,
+  });
+  const [snoozeBusy, setSnoozeBusy] = useState(false);
   const connections = live.data?.connections ?? [];
   const runs = live.data?.runs ?? [];
   // A subscription reports pending on every emission, so only missing data means loading.
@@ -304,6 +306,43 @@ export function ThreadWorkflowsControl({
       live.refresh();
     }
   };
+  const snoozed = live.data?.snoozed === true;
+  const awaitable = runs.some(
+    (run) => run.source !== "agent_session" && !isFinishedWorkflowState(run.state),
+  );
+  const toggleSnooze = async () => {
+    setSnoozeBusy(true);
+    setError(null);
+    const result = await changeSnooze({
+      environmentId,
+      input: { threadId, snoozing: !snoozed },
+    });
+    setSnoozeBusy(false);
+    if (result._tag === "Failure")
+      setError("Could not change the snooze. The thread may have a pending request.");
+    else live.refresh();
+  };
+  const snoozeLabel = snoozed ? "Wake thread now" : "Snooze until workflows finish";
+  const snoozeControl =
+    snoozed || awaitable ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              disabled={!isServerThread || snoozeBusy}
+              aria-label={snoozeLabel}
+              aria-pressed={snoozed}
+              onClick={() => void toggleSnooze()}
+            />
+          }
+        >
+          <AlarmClockIcon aria-hidden className={cn(snoozed && "text-info-foreground")} />
+        </TooltipTrigger>
+        <TooltipPopup>{snoozeLabel}</TooltipPopup>
+      </Tooltip>
+    ) : null;
   const attachControl = (
     <Popover
       open={attaching}
@@ -312,19 +351,23 @@ export function ThreadWorkflowsControl({
         if (value) setError(null);
       }}
     >
-      <PopoverTrigger
-        render={
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            disabled={!isServerThread}
-            aria-label="Attach workflow"
-            title="Attach workflow"
-          />
-        }
-      >
-        <PlusIcon aria-hidden />
-      </PopoverTrigger>
+      <Tooltip disabled={attaching}>
+        <TooltipTrigger render={<span className="flex shrink-0" />}>
+          <PopoverTrigger
+            render={
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                disabled={!isServerThread}
+                aria-label="Attach workflow"
+              />
+            }
+          >
+            <PlusIcon aria-hidden />
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipPopup>Attach workflow</TooltipPopup>
+      </Tooltip>
       <PopoverPopup align="end" width="md" padding="none">
         <WorkflowAttachPicker
           environmentId={environmentId}
@@ -386,9 +429,6 @@ export function ThreadWorkflowsControl({
               Loading workflows…
             </p>
           ) : null}
-          {displayMode === "header" ? (
-            <div className="flex justify-end">{attachControl}</div>
-          ) : null}
           {hosting.length > 0 ? (
             <>
               {bothGroups ? groupHeading("Agent sessions") : null}
@@ -402,16 +442,7 @@ export function ThreadWorkflowsControl({
             </>
           ) : null}
           {runs.length === 0 && !alert && !loading ? (
-            <ThreadDetailsControl
-              size="sm"
-              variant="ghost"
-              part="row"
-              disabled={!isServerThread}
-              onClick={() => setAttaching(true)}
-            >
-              <PlusIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
-              <span className="min-w-0 truncate">Attach a workflow</span>
-            </ThreadDetailsControl>
+            <p className="m-0 px-2.5 py-1 text-xs text-muted-foreground">No workflows attached</p>
           ) : null}
         </>
       )}
@@ -436,6 +467,7 @@ export function ThreadWorkflowsControl({
                   <TooltipPopup>{statusSummary}</TooltipPopup>
                 </Tooltip>
               ) : null}
+              {snoozeControl}
               {attachControl}
             </div>
           }
@@ -489,7 +521,11 @@ export function ThreadWorkflowsControl({
             {selectedRun ? (
               <DialogRunTitle run={selectedRun} />
             ) : (
-              <DialogTitle>Thread workflows</DialogTitle>
+              <>
+                <DialogTitle className="min-w-0 flex-1">Thread workflows</DialogTitle>
+                {snoozeControl}
+                {attachControl}
+              </>
             )}
           </div>
           {selected ? (

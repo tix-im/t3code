@@ -4,6 +4,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -14,6 +15,7 @@ import Migration from "./migrations/001_TiximWorkflowLinks.ts";
 import RelationshipsMigration from "./migrations/002_TiximWorkflowRelationships.ts";
 import InactivityMigration from "./migrations/003_TiximWorkflowWaitInactivity.ts";
 import NotificationsMigration from "./migrations/004_TiximWorkflowNotifications.ts";
+import SnoozesMigration from "./migrations/005_TiximWorkflowSnoozes.ts";
 import * as TiximWorkflows from "./TiximWorkflows.ts";
 import { make } from "./TiximWorkflowWaits.ts";
 
@@ -45,6 +47,7 @@ const setup = Effect.gen(function* () {
   yield* RelationshipsMigration;
   yield* InactivityMigration;
   yield* NotificationsMigration;
+  yield* SnoozesMigration;
 });
 const addLink = (
   daemonId: string,
@@ -64,6 +67,7 @@ const fixture = () => {
     shell: {
       activeRunId: null as string | null,
       lineage: { relationshipToParent: "root" },
+      snoozedUntil: null as DateTime.Utc | null,
     },
   };
   const layer = Layer.mergeAll(
@@ -82,12 +86,138 @@ const fixture = () => {
         Effect.gen(function* () {
           state.messages.push(command);
           if (state.failDispatch) return yield* Effect.die("transient dispatch failure");
+          if (command.type === "thread.snooze")
+            state.shell.snoozedUntil = DateTime.makeUnsafe(command.snoozedUntil);
+          if (command.type === "thread.unsnooze") state.shell.snoozedUntil = null;
           return { sequence: 1, storedEvents: [] };
         }),
     }),
   );
   return { state, layer };
 };
+
+describe("snoozing until workflows settle", () => {
+  const types = (messages: ReadonlyArray<OrchestrationV2ServerCommand>) =>
+    messages.map((message) => message.type);
+
+  it.effect("starts one turn for tracked runs once all settle, and survives a restart", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      const waits = yield* make;
+      expect(yield* waits.snooze({ threadId: "thread", snoozing: true })).toEqual({
+        status: "snoozed",
+        runCount: 2,
+      });
+      state.runs = [task("one", { state: "completed" }), task("two")];
+      yield* addLink("one");
+      yield* addLink("two");
+      yield* waits.sweep;
+      yield* TestClock.adjust("1 minute");
+      yield* waits.sweep;
+      expect(types(state.messages)).toEqual(["thread.snooze"]);
+      state.runs = [task("one", { state: "completed" }), task("two", { state: "completed" })];
+      const restarted = yield* make;
+      yield* restarted.sweep;
+      yield* TestClock.adjust("1 minute");
+      yield* restarted.sweep;
+      expect(types(state.messages)).toEqual([
+        "thread.snooze",
+        "message.dispatch",
+        "thread.unsnooze",
+      ]);
+      expect(state.shell.snoozedUntil).toBeNull();
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("wakes on untracked runs without a turn, even beside a running tracked run", () => {
+    const { state, layer } = fixture();
+    const untracked = { relationship: "untracked" as const };
+    return Effect.gen(function* () {
+      yield* setup;
+      const waits = yield* make;
+      state.runs = [task("one", untracked), task("two")];
+      yield* waits.snooze({ threadId: "thread", snoozing: true });
+      state.runs = [task("one", { ...untracked, state: "failed" }), task("two")];
+      yield* waits.sweep;
+      expect(types(state.messages)).toEqual(["thread.snooze", "thread.unsnooze"]);
+
+      state.messages = [];
+      state.runs = [task("one", untracked)];
+      yield* waits.snooze({ threadId: "thread", snoozing: true });
+      state.runs = [task("one", { ...untracked, state: "completed" })];
+      yield* waits.sweep;
+      expect(types(state.messages)).toEqual(["thread.snooze", "thread.unsnooze"]);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("leaves the turn to an agent's own wait on the same runs", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      const waits = yield* make;
+      yield* waits.wait({ threadId: "thread" });
+      yield* waits.snooze({ threadId: "thread", snoozing: true });
+      state.runs = state.runs.map((run) => ({ ...run, state: "completed" }));
+      yield* waits.sweep;
+      expect(types(state.messages)).toEqual([
+        "thread.snooze",
+        "thread.unsnooze",
+        "message.dispatch",
+      ]);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("does not touch an agent's wait, and refuses when nothing can wake it", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* setup;
+      const waits = yield* make;
+      yield* waits.wait({ threadId: "thread" });
+      yield* waits.snooze({ threadId: "thread", snoozing: true });
+      expect(yield* sql`SELECT 1 FROM tixim_workflow_waits`).toHaveLength(1);
+      yield* waits.snooze({ threadId: "thread", snoozing: false });
+      expect(yield* sql`SELECT 1 FROM tixim_workflow_waits`).toHaveLength(1);
+      expect(types(state.messages)).toEqual(["thread.snooze", "thread.unsnooze"]);
+      state.runs = state.runs.map((run) => ({ ...run, state: "completed" }));
+      expect(yield* waits.snooze({ threadId: "thread", snoozing: true })).toEqual({
+        status: "settled",
+        runCount: 0,
+      });
+      expect(state.shell.snoozedUntil).toBeNull();
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("drops the wake when the thread was woken or re-snoozed another way", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* setup;
+      const waits = yield* make;
+      yield* waits.snooze({ threadId: "thread", snoozing: true });
+      const later = DateTime.makeUnsafe("2030-01-01T00:00:00.000Z");
+      state.shell.snoozedUntil = later;
+      state.runs = state.runs.map((run) => ({ ...run, state: "completed" }));
+      yield* waits.sweep;
+      expect(types(state.messages)).toEqual(["thread.snooze"]);
+      expect(state.shell.snoozedUntil).toBe(later);
+      expect(yield* sql`SELECT 1 FROM tixim_workflow_snoozes`).toHaveLength(0);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("forgets the record when the snooze command fails", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* setup;
+      const waits = yield* make;
+      state.failDispatch = true;
+      yield* Effect.exit(waits.snooze({ threadId: "thread", snoozing: true }));
+      expect(yield* sql`SELECT 1 FROM tixim_workflow_snoozes`).toHaveLength(0);
+    }).pipe(Effect.provide(layer));
+  });
+});
 
 describe("durable workflow waiting", () => {
   it.effect(
