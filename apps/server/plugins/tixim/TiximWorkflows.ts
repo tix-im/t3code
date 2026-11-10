@@ -1,6 +1,8 @@
 import {
   TiximCommandError,
+  TiximWorkflowListResult,
   TiximWorkflowRun,
+  TiximWorkflowRunDetails,
   type TiximWorkflowConnection,
   type TiximWorkflowRelationship,
   type TiximWorkflowLinkInput,
@@ -10,8 +12,11 @@ import {
 import { tiximHostEnvironment, resolveTiximCommand } from "@t3tools/plugin-tixim-provider/server";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -36,6 +41,7 @@ const Snapshot = Schema.Struct({
       attention: Schema.Boolean,
       automatic: Schema.Boolean,
       hosting: Schema.Boolean,
+      ...TiximWorkflowRunDetails,
     }),
   ),
 });
@@ -78,9 +84,17 @@ const encodeSnapshotInput = Schema.encodeSync(
       origin: Schema.String,
       sessionIds: Schema.Array(Schema.String),
       knownHosts: Schema.Array(Schema.Struct({ daemonId: Schema.String, runId: Schema.String })),
+      runIds: Schema.Array(Schema.String),
     }),
   ),
 );
+const BridgeSearch = Schema.Struct({
+  query: Schema.optional(Schema.String),
+  limit: Schema.optional(Schema.Number),
+  references: Schema.optional(Schema.Array(Schema.String)),
+});
+const encodeSearchInput = Schema.encodeSync(Schema.fromJsonString(BridgeSearch));
+const encodeList = Schema.encodeSync(Schema.fromJsonString(TiximWorkflowListResult));
 const decodeRun = Schema.decodeSync(Schema.fromJsonString(TiximWorkflowRun));
 const decodeConfig = Schema.decodeEffect(Config);
 const decodeProviderThread = Schema.decodeEffect(Schema.fromJsonString(ProviderThread));
@@ -116,9 +130,34 @@ const connection = Effect.fn(function* (id: string) {
     environment: tiximHostEnvironment(environment, { context }),
   };
 });
-const snapshot = Effect.fn(function* (threadId: string, connectionId: string) {
-  const sql = yield* SqlClient.SqlClient;
+const readBridge = Effect.fn("TiximWorkflows.readBridge")(function* (
+  connectionId: string,
+  command: "snapshot" | "search",
+  stdin: string,
+) {
   const selected = yield* connection(connectionId);
+  const runner = yield* ProcessRunner.ProcessRunner;
+  const output = yield* runner.run({
+    command: resolveTiximCommand(selected.environment),
+    args: [...(selected.context ? ["--context", selected.context] : []), "flow-bridge", command],
+    stdin,
+    env: { ...selected.environment, TIX_WAIT_FOR_DAEMON: "0" },
+    timeout: "45 seconds",
+    maxOutputBytes: 32 * 1024 * 1024,
+  });
+  if (output.code !== 0) return yield* failure();
+  return {
+    ...(yield* decodeSnapshot(output.stdout)),
+    label: selected.label,
+  };
+});
+
+const snapshot = Effect.fn(function* (
+  threadId: string,
+  connectionId: string,
+  runIds: ReadonlyArray<string>,
+) {
+  const sql = yield* SqlClient.SqlClient;
   const providerThreads = yield* sql<{
     payload_json: string;
   }>`SELECT payload_json FROM orchestration_v2_projection_provider_threads WHERE thread_id = ${threadId}`;
@@ -131,22 +170,17 @@ const snapshot = Effect.fn(function* (threadId: string, connectionId: string) {
   const knownHosts = yield* sql<{ daemonId: string; runId: string }>`
     SELECT daemon_id AS daemonId, run_id AS runId FROM tixim_workflow_links
     WHERE thread_id = ${threadId} AND source = 'agent_session' AND excluded = 0`;
-  const runner = yield* ProcessRunner.ProcessRunner;
-  const output = yield* runner.run({
-    command: resolveTiximCommand(selected.environment),
-    args: [...(selected.context ? ["--context", selected.context] : []), "flow-bridge", "snapshot"],
-    stdin: encodeSnapshotInput({ origin: threadId, sessionIds, knownHosts }),
-    env: { ...selected.environment, TIX_WAIT_FOR_DAEMON: "0" },
-    // A snapshot paginates the daemon's complete history, including finished runs.
-    timeout: "2 minutes",
-    maxOutputBytes: 32 * 1024 * 1024,
-  });
-  if (output.code !== 0) return yield* failure();
-  return {
-    ...(yield* decodeSnapshot(output.stdout)),
-    label: selected.label,
-  };
+  return yield* readBridge(
+    connectionId,
+    "snapshot",
+    encodeSnapshotInput({ origin: threadId, sessionIds, knownHosts, runIds }),
+  );
 });
+
+const FINISHED_STATES = new Set(["completed", "failed", "cancelled"]);
+/** A restart creates a new run, so a finished run never changes. Links saved before counts existed still need one read. */
+const isSettled = (run: TiximWorkflowRun) =>
+  FINISHED_STATES.has(run.state) && run.steps !== undefined;
 
 const savedState = Effect.fn("TiximWorkflows.savedState")(function* (threadId: string) {
   if (!(yield* threadExists(threadId))) return { previous: [], connections: [] };
@@ -182,18 +216,32 @@ const savedState = Effect.fn("TiximWorkflows.savedState")(function* (threadId: s
 export const list = Effect.fn(function* (threadId: string) {
   const { previous, connections: configured } = yield* savedState(threadId);
   const sql = yield* SqlClient.SqlClient;
+  const attached = previous
+    .filter((row) => !row.excluded)
+    .map((row) => ({ row, run: decodeRun(row.payload_json) }));
   const runs = new Map<string, TiximWorkflowRun>(
-    previous
-      .filter((row) => !row.excluded)
-      .map((row) => [
-        `${row.daemon_id}/${row.run_id}`,
-        { ...decodeRun(row.payload_json), availability: "unavailable" as const },
-      ]),
+    attached.map(({ row, run }) => [
+      `${row.daemon_id}/${row.run_id}`,
+      { ...run, availability: "unavailable" as const },
+    ]),
+  );
+  const reads = yield* Effect.forEach(
+    configured,
+    (entry) =>
+      Effect.result(
+        snapshot(
+          threadId,
+          entry.id,
+          attached
+            .filter(({ row, run }) => row.connection_id === entry.id && !isSettled(run))
+            .map(({ row }) => row.run_id),
+        ),
+      ).pipe(Effect.map((result) => ({ entry, result }))),
+    { concurrency: "unbounded" },
   );
   const connections: TiximWorkflowConnection[] = [];
-  for (const entry of configured) {
+  for (const { entry, result } of reads) {
     const { id } = entry;
-    const result = yield* Effect.result(snapshot(threadId, id));
     if (result._tag === "Failure") {
       connections.push({
         ...entry,
@@ -240,13 +288,22 @@ export const list = Effect.fn(function* (threadId: string) {
   const linked = yield* sql<{
     payload_json: string;
   }>`SELECT payload_json FROM tixim_workflow_links WHERE thread_id = ${threadId} AND excluded = 0`;
+  const reachable = connections.filter((entry) => entry.available);
   return {
     runs: linked.map((row) => {
       const run = decodeRun(row.payload_json);
+      const home =
+        reachable.find(
+          (entry) => entry.id === run.connectionId && entry.daemonId === run.daemonId,
+        ) ?? reachable.find((entry) => entry.daemonId === run.daemonId);
+      const observed = runs.get(`${run.daemonId}/${run.runId}`)?.availability === "available";
       return {
         ...run,
+        connectionId: home?.id ?? run.connectionId,
         availability:
-          runs.get(`${run.daemonId}/${run.runId}`)?.availability ?? ("unavailable" as const),
+          observed || (home !== undefined && isSettled(run))
+            ? ("available" as const)
+            : ("unavailable" as const),
       };
     }),
     connections,
@@ -258,29 +315,66 @@ export function mentionedWorkflowIds(text: string): ReadonlySet<string> {
   return new Set(text.match(/(?<![\w-])wf-[a-z0-9]+(?:-[a-z0-9]+)+(?![\w-])/g) ?? []);
 }
 
-const searchImpl = Effect.fn(function* (input: TiximWorkflowSearchInput) {
-  yield* thread(input.threadId);
-  const result = yield* snapshot(input.threadId, input.connectionId);
-  const query = input.query.toLowerCase().trim();
+const MENTION_LOOKUP_LIMIT = 30;
+const RECENT_PAGE_SIZE = 200;
+const RECENT_PAGE_TTL = Duration.seconds(10);
+const SEARCH_RESULT_LIMIT = 100;
+const EXACT_REFERENCE =
+  /^(?:wf-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{4}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/;
+
+const mentionedReferences = Effect.fn("TiximWorkflows.mentionedReferences")(function* (
+  threadId: string,
+) {
   const sql = yield* SqlClient.SqlClient;
-  const mentions = new Set<string>();
-  if (input.mentionedOnly) {
-    const messages = yield* sql<{
-      text: string;
-    }>`SELECT json_extract(payload_json, '$.text') AS text
-      FROM orchestration_v2_projection_messages WHERE thread_id = ${input.threadId}
-      AND role IN ('user', 'assistant') AND json_extract(payload_json, '$.text') LIKE '%wf-%'`;
-    for (const message of messages)
-      for (const id of mentionedWorkflowIds(message.text)) mentions.add(id);
-  }
+  const messages = yield* sql<{
+    text: string;
+  }>`SELECT json_extract(payload_json, '$.text') AS text
+    FROM orchestration_v2_projection_messages WHERE thread_id = ${threadId}
+    AND role IN ('user', 'assistant') AND json_extract(payload_json, '$.text') LIKE '%wf-%'
+    ORDER BY rowid DESC`;
+  const mentions = new Set(messages.flatMap((message) => [...mentionedWorkflowIds(message.text)]));
+  return [...mentions].slice(0, MENTION_LOOKUP_LIMIT);
+});
+
+const readSearch = (connectionId: string, input: typeof BridgeSearch.Type) =>
+  readBridge(connectionId, "search", encodeSearchInput(input));
+const readRecent = (connectionId: string) => readSearch(connectionId, { limit: RECENT_PAGE_SIZE });
+type BridgeRead = Effect.Success<ReturnType<typeof readBridge>>;
+
+const matchesQuery = (run: BridgeRead["runs"][number], query: string) =>
+  [run.name, run.definitionName, run.hid, run.runId].some((field) =>
+    field?.toLowerCase().includes(query),
+  );
+const activeThenNewest = (a: BridgeRead["runs"][number], b: BridgeRead["runs"][number]) =>
+  Number(FINISHED_STATES.has(a.state)) - Number(FINISHED_STATES.has(b.state)) ||
+  (b.submittedAt ?? 0) - (a.submittedAt ?? 0);
+
+const searchImpl = Effect.fn("TiximWorkflows.search")(function* <E, R>(
+  input: TiximWorkflowSearchInput,
+  recent: (connectionId: string) => Effect.Effect<BridgeRead, E, R>,
+) {
+  yield* thread(input.threadId);
+  const text = input.query.trim();
+  const query = text.toLowerCase();
+  const mentions = input.mentionedOnly ? yield* mentionedReferences(input.threadId) : [];
+  if (input.mentionedOnly && mentions.length === 0) return { runs: [], connections: [] };
+  const daemonMatched = !input.mentionedOnly && input.includeHistory === true && query !== "";
+  const result = yield* input.mentionedOnly
+    ? readSearch(input.connectionId, { references: mentions })
+    : EXACT_REFERENCE.test(query)
+      ? readSearch(input.connectionId, { references: [query] })
+      : daemonMatched
+        ? readSearch(input.connectionId, { query: text, limit: SEARCH_RESULT_LIMIT })
+        : recent(input.connectionId);
   return {
     runs: result.runs
       .filter(
         (r) =>
-          (!input.mentionedOnly || mentions.has(r.runId)) &&
-          `${r.name} ${r.runId}`.toLowerCase().includes(query),
+          (!input.mentionedOnly || mentions.includes(r.hid ?? r.runId)) &&
+          (daemonMatched || matchesQuery(r, query)),
       )
-      .slice(0, 100)
+      .toSorted(activeThenNewest)
+      .slice(0, SEARCH_RESULT_LIMIT)
       .map((r): TiximWorkflowRun => ({
         ...r,
         daemonId: result.daemonId,
@@ -294,7 +388,23 @@ const searchImpl = Effect.fn(function* (input: TiximWorkflowSearchInput) {
     ],
   };
 });
-export const search = (input: TiximWorkflowSearchInput) => safe(searchImpl(input));
+export const search = (input: TiximWorkflowSearchInput) => safe(searchImpl(input, readRecent));
+
+/** Filtering a short-lived page keeps search instant while someone types. */
+export const makeCachedSearch = Effect.gen(function* () {
+  const context = yield* Effect.context<
+    SqlClient.SqlClient | ServerSettings.ServerSettingsService | ProcessRunner.ProcessRunner
+  >();
+  const recentRuns = yield* Cache.makeWith(
+    (connectionId: string) => readRecent(connectionId).pipe(Effect.provide(context)),
+    {
+      capacity: 16,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? RECENT_PAGE_TTL : Duration.zero),
+    },
+  );
+  return (input: TiximWorkflowSearchInput) =>
+    safe(searchImpl(input, (id) => Cache.get(recentRuns, id))).pipe(Effect.provide(context));
+});
 
 const dropPending = Effect.fn(function* (input: TiximWorkflowLinkInput) {
   const sql = yield* SqlClient.SqlClient;
@@ -311,7 +421,7 @@ const linkImpl = Effect.fn(function* (input: TiximWorkflowLinkInput) {
       relationship: TiximWorkflowRelationship;
     }>`SELECT source, relationship FROM tixim_workflow_links
       WHERE thread_id = ${input.threadId} AND daemon_id = ${input.daemonId} AND run_id = ${input.runId}`;
-    const current = yield* snapshot(input.threadId, input.connectionId);
+    const current = yield* snapshot(input.threadId, input.connectionId, [input.runId]);
     const found = current.runs.find((r) => r.runId === input.runId);
     if (current.daemonId !== input.daemonId || !found) return yield* failure();
     const run: TiximWorkflowRun = {
@@ -428,7 +538,7 @@ export const live = (threadId: string) =>
       })),
     ),
     Stream.fromEffectSchedule(safe(list(threadId)), Schedule.spaced("5 seconds")),
-  );
+  ).pipe(Stream.changesWith((a, b) => encodeList(a) === encodeList(b)));
 
 const READ_METHODS = new Set([
   "SubscribeWorkflowEvents",
@@ -562,22 +672,13 @@ export class WorkflowOperations extends Context.Service<
     >;
     readonly list: (
       threadId: string,
-    ) => Effect.Effect<
-      typeof import("@t3tools/contracts").TiximWorkflowListResult.Type,
-      TiximCommandError
-    >;
+    ) => Effect.Effect<typeof TiximWorkflowListResult.Type, TiximCommandError>;
     readonly search: (
       input: TiximWorkflowSearchInput,
-    ) => Effect.Effect<
-      typeof import("@t3tools/contracts").TiximWorkflowListResult.Type,
-      TiximCommandError
-    >;
+    ) => Effect.Effect<typeof TiximWorkflowListResult.Type, TiximCommandError>;
     readonly link: (
       input: TiximWorkflowLinkInput,
-    ) => Effect.Effect<
-      typeof import("@t3tools/contracts").TiximWorkflowListResult.Type,
-      TiximCommandError
-    >;
+    ) => Effect.Effect<typeof TiximWorkflowListResult.Type, TiximCommandError>;
   }
 >()("t3/plugins/tixim/TiximWorkflows/WorkflowOperations") {}
 export const layer = Layer.effect(

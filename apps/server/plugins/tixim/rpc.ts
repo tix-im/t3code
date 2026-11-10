@@ -21,17 +21,17 @@ export const makeRpcHandlers = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const tiximProcessRunner = yield* ProcessRunner.make();
   const tiximEnvironment = yield* HostProcess.Environment;
+  const searchWorkflows = yield* TiximWorkflows.makeCachedSearch.pipe(
+    Effect.provideService(SqlClient.SqlClient, sql),
+    Effect.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
+  );
   return {
     [WS_METHODS.tiximWorkflows]: (input: typeof TiximWorkflowListInput.Type) =>
       TiximWorkflows.live(input.threadId).pipe(
         Stream.provideService(SqlClient.SqlClient, sql),
         Stream.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
       ),
-    [WS_METHODS.tiximWorkflowSearch]: (input: TiximWorkflowSearchInput) =>
-      TiximWorkflows.search(input).pipe(
-        Effect.provideService(SqlClient.SqlClient, sql),
-        Effect.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
-      ),
+    [WS_METHODS.tiximWorkflowSearch]: (input: TiximWorkflowSearchInput) => searchWorkflows(input),
     [WS_METHODS.tiximWorkflowLink]: (input: TiximWorkflowLinkInput) =>
       TiximWorkflows.link(input).pipe(
         Effect.provideService(SqlClient.SqlClient, sql),

@@ -1,10 +1,13 @@
 import {
   ThreadId,
   OrchestratorMcpFailure,
+  TiximWorkflowRunDetails,
+  type TiximWorkflowListResult,
   type TiximWorkflowRelationship,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Struct from "effect/Struct";
 import { McpToolAccess, readThread, unavailable } from "../../src/plugins/host.ts";
 import * as TiximWorkflows from "./TiximWorkflows.ts";
 import * as TiximWorkflowWaits from "./TiximWorkflowWaits.ts";
@@ -22,6 +25,12 @@ const required = <A>(value: A | undefined, name: string) =>
 const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A, E, R>(
   handle: (params: P) => Effect.Effect<A, E, R>,
 ) => McpToolAccess.writesThreads((params: P) => [params.threadId], handle);
+
+// Report text and step names are run output, which must not reach an agent as tool results.
+const forAgent = (result: typeof TiximWorkflowListResult.Type) => ({
+  ...result,
+  runs: result.runs.map((run) => Struct.omit(run, Struct.keys(TiximWorkflowRunDetails))),
+});
 
 const workflowOperation = Effect.fn(function* (input: {
   threadId?: ThreadId | undefined;
@@ -44,7 +53,7 @@ const workflowOperation = Effect.fn(function* (input: {
   if (Option.isNone(available)) return yield* unavailable();
   const workflows = available.value;
   if (input.action === "list")
-    return yield* workflows.list(threadId).pipe(Effect.mapError(unavailable));
+    return yield* workflows.list(threadId).pipe(Effect.map(forAgent), Effect.mapError(unavailable));
   const connectionId = yield* required(input.connectionId, "connectionId");
   if (input.action === "search")
     return yield* workflows
@@ -53,8 +62,9 @@ const workflowOperation = Effect.fn(function* (input: {
         connectionId,
         query: input.query ?? "",
         ...(input.mentionedOnly === undefined ? {} : { mentionedOnly: input.mentionedOnly }),
+        includeHistory: input.query !== undefined && input.query.trim() !== "",
       })
-      .pipe(Effect.mapError(unavailable));
+      .pipe(Effect.map(forAgent), Effect.mapError(unavailable));
   return yield* workflows
     .link({
       threadId,
@@ -64,7 +74,7 @@ const workflowOperation = Effect.fn(function* (input: {
       attach: input.action === "attach",
       ...(input.relationship === undefined ? {} : { relationship: input.relationship }),
     })
-    .pipe(Effect.mapError(unavailable));
+    .pipe(Effect.map(forAgent), Effect.mapError(unavailable));
 });
 
 export const layer = McpToolAccess.toLayer(toolkit, {

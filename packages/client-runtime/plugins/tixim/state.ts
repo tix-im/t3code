@@ -8,6 +8,7 @@ import type {
   EnvironmentId,
   ThreadId,
   TiximWorkflowListResult,
+  TiximWorkflowRun,
   TiximWorkflowSearchInput,
 } from "@t3tools/contracts";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
@@ -70,9 +71,11 @@ export function createWorkflowReferenceFamily(workflowEnvironment: {
           });
           const live = get(liveAtom);
           const data = AsyncResult.getOrElse(live, () => null);
-          const linked = data?.runs.filter((run) => run.runId === hid) ?? [];
+          const named = (run: TiximWorkflowRun) => run.runId === hid || run.hid === hid;
+          const linked = data?.runs.filter(named) ?? [];
           const runs = [...linked];
-          let loading = live.waiting || live._tag === "Initial";
+          // A subscription reports waiting on every emission, so only missing data means loading.
+          let loading = data === null && (live.waiting || live._tag === "Initial");
           let unavailable = live._tag === "Failure";
           const queries = (hid.trim() ? (data?.connections ?? []) : [])
             .filter((connection) => {
@@ -91,7 +94,7 @@ export function createWorkflowReferenceFamily(workflowEnvironment: {
             loading = loading || result.waiting || result._tag === "Initial";
             unavailable = unavailable || result._tag === "Failure";
             for (const run of AsyncResult.getOrElse(result, () => null)?.runs ?? []) {
-              if (run.runId === hid && !runs.some((other) => other.daemonId === run.daemonId))
+              if (named(run) && !runs.some((other) => other.daemonId === run.daemonId))
                 runs.push(run);
             }
           }
