@@ -928,6 +928,7 @@ export function ProviderInstanceCard({
           ? undefined
           : (readConfigString(instance.config, "registryIconUrl") ?? undefined)
       }
+      instanceIcon={liveProvider?.icon}
       showBadge={Boolean(accentColor)}
       className="size-5"
       iconClassName="size-4 text-foreground/80"

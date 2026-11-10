@@ -1,4 +1,5 @@
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind, ServerProviderIcon } from "@t3tools/contracts";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
@@ -13,6 +14,7 @@ export const resolveTiximCommand = (environment: NodeJS.ProcessEnv = process.env
   environment.T3_TIXIM_CLI_PATH?.trim() || TIXIM_COMMAND;
 
 const decodeSettings = Schema.decodeSync(TiximSettings);
+const decodeIcon = Schema.decodeUnknownOption(ServerProviderIcon);
 
 /**
  * Env credentials and endpoints outrank a context's own auth.json and URL in
@@ -83,6 +85,15 @@ export function tiximHostEnvironment(
   return next;
 }
 
+/** "Tixim Claude" with the harness's TiX-merged icon, once a harness with an icon is picked. */
+export function tiximBranding(settings: TiximSettings) {
+  if (!settings.harness) return {};
+  return {
+    displayName: `Tixim ${settings.harnessLabel || settings.harness}`,
+    icon: Option.getOrUndefined(decodeIcon(settings.harnessIcon)),
+  };
+}
+
 export const TiximDriver = makeAcpRegistryBackedDriver<TiximSettings>({
   driverKind: TIXIM_DRIVER_KIND,
   displayName: "Tixim",
@@ -91,4 +102,5 @@ export const TiximDriver = makeAcpRegistryBackedDriver<TiximSettings>({
   toAcpSettings: tiximAcpSettings,
   hostEnvironment: tiximHostEnvironment,
   unconfiguredMessage: "Select a tixim harness before starting a thread.",
+  branding: tiximBranding,
 });

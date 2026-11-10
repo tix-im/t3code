@@ -2,12 +2,14 @@ import {
   TiximCommandError,
   type TiximContext,
   type TiximListContextsResult,
+  TiximHarnessIcon,
   type TiximListHarnessesResult,
   type TiximListModelsInput,
   TiximListModelsResult,
 } from "@t3tools/contracts";
 import { tiximHostEnvironment, resolveTiximCommand } from "@t3tools/plugin-tixim-provider/server";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { ProcessRunner } from "../../src/plugins/host.ts";
@@ -37,7 +39,11 @@ const TixHarnessRow = Schema.Struct({
   description: Schema.optional(Schema.String),
   authenticated: Schema.optional(Schema.String),
   has_acp: Schema.optional(Schema.String),
+  icon: Schema.optional(Schema.Unknown),
 });
+
+// A malformed icon only costs that harness its icon, not the whole listing.
+const decodeHarnessIcon = Schema.decodeUnknownOption(TiximHarnessIcon);
 
 const decodeContextRows = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Array(TixContextRow)),
@@ -145,11 +151,15 @@ export const listTiximHarnesses = Effect.fn("TiximCatalog.listHarnesses")(functi
   return {
     harnesses: rows
       .filter((row) => row.has_acp === "yes")
-      .map((row) => ({
-        name: row.name,
-        description: row.description ?? "",
-        authenticated: row.authenticated === "yes",
-      })),
+      .map((row) => {
+        const icon = Option.getOrUndefined(decodeHarnessIcon(row.icon));
+        return {
+          name: row.name,
+          description: row.description ?? "",
+          authenticated: row.authenticated === "yes",
+          ...(icon ? { icon } : {}),
+        };
+      }),
   };
 });
 
@@ -158,47 +168,62 @@ export const listTiximModels = Effect.fn("TiximCatalog.listModels")(function* (
   environment: NodeJS.ProcessEnv,
   input: TiximListModelsInput,
 ): Effect.fn.Return<TiximListModelsResult, TiximCommandError> {
-  const args =
-    input.routing === "gateway"
-      ? ["gateway", "models", "list"]
-      : ["harnesses", "models", input.harness, "--routing", input.routing];
-  const stdout = yield* runTix(runner, tiximHostEnvironment(environment, input), [
-    ...(input.context ? ["--context", input.context] : []),
-    "-o",
-    "json",
-    ...args,
-  ]).pipe(
-    Effect.mapError((error) =>
-      input.routing !== "gateway" && /unrecognized subcommand|unimplemented/i.test(error.message)
-        ? new TiximCommandError({
-            message:
-              "This connection needs a newer Tixim daemon and tix CLI to list harness models.",
-          })
-        : error,
+  const runModels = (args: ReadonlyArray<string>) =>
+    runTix(runner, tiximHostEnvironment(environment, input), [
+      ...(input.context ? ["--context", input.context] : []),
+      "-o",
+      "json",
+      ...args,
+    ]);
+  const gatewayModels = runModels(["gateway", "models", "list"]).pipe(
+    Effect.flatMap((stdout) =>
+      decodeGatewayModels(stdout).pipe(
+        Effect.mapError(
+          () =>
+            new TiximCommandError({
+              message: "tix gateway models list returned unexpected output.",
+            }),
+        ),
+      ),
+    ),
+    Effect.map((rows) =>
+      rows
+        .filter((row) => row.model && row.source !== "endpoint" && row.state !== "disabled")
+        .map((row) => ({ id: row.model, name: row.model })),
     ),
   );
-  const models =
-    input.routing === "gateway"
-      ? yield* decodeGatewayModels(stdout).pipe(
-          Effect.map((rows) =>
-            rows
-              .filter((row) => row.model && row.source !== "endpoint" && row.state !== "disabled")
-              .map((row) => ({ id: row.model, name: row.model })),
-          ),
-          Effect.mapError(
-            () =>
+  const harnessModels = runModels([
+    "harnesses",
+    "models",
+    input.harness,
+    "--routing",
+    input.routing,
+  ]).pipe(
+    Effect.flatMap((stdout) =>
+      decodeHarnessModels(stdout).pipe(
+        Effect.mapError(
+          () =>
+            new TiximCommandError({
+              message: "tix harnesses models returned unexpected output.",
+            }),
+        ),
+      ),
+    ),
+    Effect.map((result) => result.models),
+    Effect.catchIf(
+      (error) => /unrecognized subcommand|unimplemented/i.test(error.message),
+      () =>
+        // The gateway list cannot describe what a harness's own login may run.
+        input.routing === "default"
+          ? gatewayModels
+          : Effect.fail(
               new TiximCommandError({
-                message: "tix gateway models list returned unexpected output.",
+                message:
+                  "This connection needs a newer Tixim daemon and tix CLI to list harness models.",
               }),
-          ),
-        )
-      : (yield* decodeHarnessModels(stdout).pipe(
-          Effect.mapError(
-            () =>
-              new TiximCommandError({
-                message: "tix harnesses models returned unexpected output.",
-              }),
-          ),
-        )).models;
+            ),
+    ),
+  );
+  const models = yield* input.routing === "gateway" ? gatewayModels : harnessModels;
   return { models: [...new Map(models.map((model) => [model.id, model])).values()] };
 });

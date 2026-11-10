@@ -7,6 +7,7 @@ import {
   type AcpRegistryProbeModel,
   type ProviderOptionDescriptor,
   type ServerProvider,
+  type ServerProviderIcon,
   type ServerProviderModel,
 } from "@t3tools/contracts";
 import { AcpRegistrySettings } from "../settings.ts";
@@ -282,6 +283,7 @@ interface SnapshotIdentity {
   readonly instanceId: ProviderInstance["instanceId"];
   readonly displayName: string | undefined;
   readonly accentColor: string | undefined;
+  readonly icon?: ServerProviderIcon | undefined;
   readonly continuationKey: string;
 }
 
@@ -310,6 +312,7 @@ function baseSnapshot(
     ...(input.displayName ? { displayName: input.displayName } : {}),
     ...(input.accentColor ? { accentColor: input.accentColor } : {}),
     ...(iconUrl ? { iconUrl } : {}),
+    ...(input.icon ? { icon: input.icon } : {}),
     continuation: { groupKey: input.continuationKey },
     supportsTextGeneration: false,
     enabled: input.settings.enabled,
@@ -590,6 +593,11 @@ export interface AcpRegistryBackedDriverSpec<Config> {
   /** Adjusts the host environment before the instance's own variables apply. */
   readonly hostEnvironment?: (environment: NodeJS.ProcessEnv, config: Config) => NodeJS.ProcessEnv;
   readonly unconfiguredMessage?: string;
+  /** Name and icon for instances the user has not named, derived from their config. */
+  readonly branding?: (config: Config) => {
+    readonly displayName?: string | undefined;
+    readonly icon?: ServerProviderIcon | undefined;
+  };
 }
 
 export function makeAcpRegistryBackedDriver<Config>(
@@ -611,13 +619,15 @@ export function makeAcpRegistryBackedDriver<Config>(
     defaultConfig: spec.defaultConfig,
     create: Effect.fn("AcpRegistryDriver.create")(function* ({
       instanceId,
-      displayName,
+      displayName: configuredDisplayName,
       accentColor,
       environment,
       enabled,
       config: driverConfig,
     }) {
       const config = spec.toAcpSettings(driverConfig);
+      const branding = spec.branding?.(driverConfig);
+      const displayName = configuredDisplayName ?? branding?.displayName;
       const adjustHostEnvironment = spec.hostEnvironment;
       const catalog = yield* AcpRegistrySupport.AcpRegistryCatalog;
       const runtimeCoordinator = yield* Effect.serviceOption(
@@ -651,6 +661,7 @@ export function makeAcpRegistryBackedDriver<Config>(
         instanceId,
         displayName,
         accentColor,
+        icon: branding?.icon,
         continuationKey: continuationIdentity.continuationKey,
       };
       const effectiveConfig = { ...config, enabled } satisfies AcpRegistrySettings;

@@ -72,6 +72,7 @@ export function ThreadRelationshipIcon({
           acpRegistryIconUrl={entry?.acpRegistryIconUrl ?? provider?.iconUrl}
           showBadge={showInstanceBadge}
           size="compact"
+          instanceIcon={provider?.icon}
           iconClassName={iconClassName}
           className="z-auto"
         />

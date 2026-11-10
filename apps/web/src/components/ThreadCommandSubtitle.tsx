@@ -1,4 +1,4 @@
-import type { ProviderDriverKind } from "@t3tools/contracts";
+import type { ProviderDriverKind, ServerProviderIcon } from "@t3tools/contracts";
 import { FolderGit2Icon, FolderIcon, GitBranchIcon } from "lucide-react";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
@@ -40,6 +40,7 @@ export function ThreadCommandSubtitle(props: {
   providerDisplayName?: string | null;
   acpRegistryAgentId?: string | undefined;
   acpRegistryIconUrl?: string | undefined;
+  instanceIcon?: ServerProviderIcon | undefined;
   variant?: ThreadCommandSubtitleVariant;
   className?: string;
 }) {
@@ -95,6 +96,7 @@ export function ThreadCommandSubtitle(props: {
             displayName={props.providerDisplayName ?? props.driverKind}
             acpRegistryAgentId={props.acpRegistryAgentId}
             acpRegistryIconUrl={props.acpRegistryIconUrl}
+            instanceIcon={props.instanceIcon}
             iconClassName="size-3 shrink-0 opacity-70"
           />
         </>

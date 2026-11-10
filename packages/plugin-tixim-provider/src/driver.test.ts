@@ -6,6 +6,7 @@ import {
   TIXIM_DRIVER_KIND,
   TiximDriver,
   tiximAcpSettings,
+  tiximBranding,
   tiximCommandArgs,
   tiximHostEnvironment,
 } from "./driver.ts";
@@ -77,6 +78,36 @@ describe("Tixim driver", () => {
         T3_TIXIM_CLI_PATH: "/pinned/tix",
       }).commandPath,
     ).toBe("/pinned/tix");
+  });
+
+  it("brands the instance with the picked harness and accepts only inert icons", () => {
+    const icon = {
+      viewBox: "0 0 24 24",
+      fill: { light: "#4A3CD6", dark: "#8478F0" },
+      paths: [{ d: "M0 0h24v24H0Z", fillRule: "evenodd" }],
+    };
+    expect(
+      tiximBranding(
+        decodeUnknownSettings({
+          harness: "claude-code",
+          harnessLabel: "Claude",
+          harnessIcon: icon,
+        }),
+      ),
+    ).toEqual({ displayName: "Tixim Claude", icon });
+    expect(tiximBranding(decodeSettings({ harness: "hermes" }))).toEqual({
+      displayName: "Tixim hermes",
+      icon: undefined,
+    });
+    expect(tiximBranding(decodeSettings({}))).toEqual({});
+    for (const harnessIcon of [
+      { ...icon, fill: { light: "url(https://x/y)", dark: "#fff" } },
+      { ...icon, paths: [{ d: "M0 0<script>" }] },
+    ]) {
+      expect(
+        tiximBranding(decodeUnknownSettings({ harness: "x", harnessLabel: "X", harnessIcon })),
+      ).toEqual({ displayName: "Tixim X", icon: undefined });
+    }
   });
 
   it("rejects linger values outside the offered choices", () => {

@@ -109,6 +109,15 @@ export const TiximSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
+    // Copied from the daemon's harness list when the harness is picked, so the
+    // instance shows its harness without asking the daemon again. The icon is
+    // checked where it is used: a bad one must not disable the instance.
+    harnessLabel: Schema.optionalKey(TrimmedString).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    harnessIcon: Schema.optionalKey(Schema.Unknown).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
   },
   {
     order: ["context", "harness", "routing", "model", "linger", "workflow"],
