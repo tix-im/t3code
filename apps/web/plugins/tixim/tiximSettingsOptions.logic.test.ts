@@ -4,6 +4,7 @@ import {
   tiximContextOptions,
   tiximHarnessOptions,
   tiximModelOptions,
+  withHarnessBranding,
 } from "./tiximSettingsOptions.logic";
 
 describe("tixim settings options", () => {
@@ -69,5 +70,52 @@ describe("tixim settings options", () => {
     expect(tiximHarnessOptions([], "", { isPending: false, error: null })[0]?.label).toBe(
       "No ACP harnesses on this daemon",
     );
+  });
+
+  it("stores the picked harness's label and merged icon, dropping a previous harness's", () => {
+    const icon = (fill: string) => ({
+      viewBox: "0 0 24 24",
+      fill: { light: fill, dark: fill },
+      paths: [{ d: "M0 0h24v24H0Z" }],
+    });
+    const harnesses = [
+      {
+        name: "claude-code",
+        description: "",
+        authenticated: true,
+        icon: { id: "claude", label: "Claude", plain: icon("#111111"), tixim: icon("#222222") },
+      },
+      {
+        name: "hermes",
+        description: "",
+        authenticated: true,
+        icon: { id: "tix", label: "Tixim", plain: icon("#333333"), tixim: icon("#333333") },
+      },
+      {
+        name: "evil",
+        description: "",
+        authenticated: true,
+        icon: { id: "x", label: "X", plain: icon("red"), tixim: icon("url(https://x)") },
+      },
+      { name: "old", description: "", authenticated: true },
+    ];
+    const claude = { harness: "claude-code", harnessLabel: "Claude", harnessIcon: icon("#222222") };
+    expect(withHarnessBranding({ harness: "claude-code" }, {}, harnesses)).toEqual(claude);
+    expect(withHarnessBranding({ ...claude, harness: "hermes" }, claude, harnesses)).toEqual({
+      harness: "hermes",
+      harnessIcon: icon("#333333"),
+    });
+    expect(withHarnessBranding({ ...claude, harness: "evil" }, claude, harnesses)).toEqual({
+      harness: "evil",
+      harnessLabel: "X",
+    });
+    expect(withHarnessBranding({ ...claude, harness: "old" }, claude, harnesses)).toEqual({
+      harness: "old",
+    });
+    // An unloaded listing must not wipe what the config already holds.
+    expect(withHarnessBranding({ ...claude, model: "opus" }, claude, null)).toEqual({
+      ...claude,
+      model: "opus",
+    });
   });
 });

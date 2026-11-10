@@ -1,9 +1,12 @@
-import type {
-  ProviderSettingsFormOption,
-  TiximContext,
-  TiximHarness,
-  TiximListModelsResult,
+import {
+  ServerProviderIcon,
+  type ProviderSettingsFormOption,
+  type TiximContext,
+  type TiximHarness,
+  type TiximListModelsResult,
 } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 export function configString(config: unknown, key: string): string {
   if (config === null || typeof config !== "object") return "";
@@ -64,6 +67,31 @@ export function tiximHarnessOptions(
     })),
   ];
   return withConfigured(options, configured, (name) => `${name} (not listed)`);
+}
+
+const decodeProviderIcon = Schema.decodeUnknownOption(ServerProviderIcon);
+
+/**
+ * Stores the listed harness's label and TiX-merged icon with the config. An
+ * unlisted harness keeps what it has unless it was just changed.
+ */
+export function withHarnessBranding(
+  next: Record<string, unknown>,
+  previous: unknown,
+  harnesses: ReadonlyArray<TiximHarness> | null,
+): Record<string, unknown> {
+  const harness = configString(next, "harness");
+  const listed = harnesses?.find((candidate) => candidate.name === harness);
+  if (!listed && harness === configString(previous, "harness")) return next;
+  const { harnessLabel: _label, harnessIcon: _icon, ...rest } = next;
+  if (!listed?.icon) return rest;
+  const icon = Option.getOrUndefined(decodeProviderIcon(listed.icon.tixim));
+  return {
+    ...rest,
+    // The generic TiX mark has no brand to name; the harness name says more.
+    ...(listed.icon.id !== "tix" && listed.icon.label ? { harnessLabel: listed.icon.label } : {}),
+    ...(icon ? { harnessIcon: icon } : {}),
+  };
 }
 
 export function tiximModelOptions(

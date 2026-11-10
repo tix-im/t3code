@@ -214,6 +214,29 @@ export const ServerProviderUpdateState = Schema.Struct({
 });
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
+const ServerProviderIconColor = Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{3,8}$/));
+const ServerProviderIconFill = Schema.Struct({
+  light: ServerProviderIconColor,
+  dark: ServerProviderIconColor,
+});
+
+/** Inline vector icon for one instance; only path data and hex colors, so nothing it holds can load. */
+export const ServerProviderIcon = Schema.Struct({
+  viewBox: Schema.String.check(Schema.isPattern(/^[-0-9.eE\s,]{1,64}$/)),
+  fill: ServerProviderIconFill,
+  paths: Schema.Array(
+    Schema.Struct({
+      d: Schema.String.check(
+        Schema.isMaxLength(16_384),
+        Schema.isPattern(/^[MmLlHhVvCcSsQqTtAaZz0-9eE.,\s+-]+$/),
+      ),
+      fillRule: Schema.optionalKey(Schema.Literals(["evenodd", "nonzero"])),
+      fill: Schema.optionalKey(ServerProviderIconFill),
+    }),
+  ).check(Schema.isMaxLength(16)),
+});
+export type ServerProviderIcon = typeof ServerProviderIcon.Type;
+
 export const ServerProvider = Schema.Struct({
   // Only instanceId is stable enough for provider routing.
   instanceId: ProviderInstanceId,
@@ -222,6 +245,8 @@ export const ServerProvider = Schema.Struct({
   accentColor: Schema.optional(TrimmedNonEmptyString),
   // Validate driver-supplied remote icons against the driver's trusted origin.
   iconUrl: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(2_048))),
+  /** Replaces the driver's icon for this instance. */
+  icon: Schema.optional(ServerProviderIcon),
   badgeLabel: Schema.optional(TrimmedNonEmptyString),
   continuation: Schema.optional(ServerProviderContinuation),
   showInteractionModeToggle: Schema.optional(Schema.Boolean),

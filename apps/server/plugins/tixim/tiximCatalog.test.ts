@@ -30,6 +30,13 @@ function fakeRunner(
   };
 }
 
+const brandIcon = {
+  viewBox: "0 0 24 24",
+  fill: { light: "#000000", dark: "#FFFFFF" },
+  paths: [{ d: "M0 0h24v24H0Z" }],
+};
+const harnessIcon = { id: "openai", label: "Codex", plain: brandIcon, tixim: brandIcon };
+
 const CONTEXTS = JSON.stringify([
   { current: "", name: "dev-0", status: "running", url: "http://127.0.0.1:7280" },
   { current: "*", name: "server", status: "running", url: "http://127.0.0.1:7080" },
@@ -77,7 +84,20 @@ describe("tixim catalog", () => {
         fakeRunner(
           () => ({
             stdout: JSON.stringify([
-              { name: "codex", description: "Codex", authenticated: "yes", has_acp: "yes" },
+              {
+                name: "codex",
+                description: "Codex",
+                authenticated: "yes",
+                has_acp: "yes",
+                icon: harnessIcon,
+              },
+              {
+                name: "hermes",
+                description: "Hermes",
+                authenticated: "no",
+                has_acp: "yes",
+                icon: { id: "broken" },
+              },
               { name: "aider", description: "Aider", authenticated: "no", has_acp: "no" },
             ]),
           }),
@@ -87,7 +107,8 @@ describe("tixim catalog", () => {
         "dev-0",
       );
       expect(result.harnesses).toEqual([
-        { name: "codex", description: "Codex", authenticated: true },
+        { name: "codex", description: "Codex", authenticated: true, icon: harnessIcon },
+        { name: "hermes", description: "Hermes", authenticated: false },
       ]);
       expect(calls[0]?.args).toEqual(["--context", "dev-0", "-o", "json", "harnesses", "list"]);
       expect(calls[0]?.env).toEqual({ PATH: "/bin", TIX_WAIT_FOR_DAEMON: "0" });
@@ -146,6 +167,47 @@ describe("tixim catalog", () => {
         ]);
         expect(calls[0]?.env?.TIX_DAEMON_AUTH_TOKEN).toBeUndefined();
       }
+    }),
+  );
+
+  it.effect("offers gateway models for declared routing until tix lists harness models", () =>
+    Effect.gen(function* () {
+      const calls: Array<ProcessRunner.ProcessRunInput> = [];
+      const runner = fakeRunner(
+        (input) =>
+          input.args.includes("harnesses")
+            ? { stdout: "", code: 2, stderr: "error: unrecognized subcommand 'models'\n" }
+            : {
+                stdout: JSON.stringify([
+                  { model: "gateway-model", source: "registry", state: "approved" },
+                ]),
+              },
+        calls,
+      );
+      const result = yield* listTiximModels(
+        runner,
+        {},
+        { context: "remote", harness: "codex", routing: "default" },
+      );
+      expect(result.models).toEqual([{ id: "gateway-model", name: "gateway-model" }]);
+      expect(calls.at(-1)?.args).toEqual([
+        "--context",
+        "remote",
+        "-o",
+        "json",
+        "gateway",
+        "models",
+        "list",
+      ]);
+
+      const native = yield* listTiximModels(
+        runner,
+        {},
+        { context: "remote", harness: "codex", routing: "native" },
+      ).pipe(Effect.flip);
+      expect(native.message).toBe(
+        "This connection needs a newer Tixim daemon and tix CLI to list harness models.",
+      );
     }),
   );
 

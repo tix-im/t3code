@@ -134,6 +134,7 @@ export type SidebarProviderEntry = Pick<
   | "accentColor"
   | "acpRegistryAgentId"
   | "acpRegistryIconUrl"
+  | "icon"
   | "models"
 >;
 function compactSidebarTimeLabel(label: string): string {
@@ -201,6 +202,7 @@ function SidebarProviderStack(props: {
       accentColor={currentEntry.accentColor}
       acpRegistryAgentId={currentEntry.acpRegistryAgentId}
       acpRegistryIconUrl={currentEntry.acpRegistryIconUrl}
+      instanceIcon={currentEntry.icon}
       showBadge={showInstanceBadge}
       size="compact"
       iconClassName="opacity-60"
@@ -221,6 +223,7 @@ function SidebarProviderStack(props: {
             displayName={entry.displayName}
             acpRegistryAgentId={entry.acpRegistryAgentId}
             acpRegistryIconUrl={entry.acpRegistryIconUrl}
+            instanceIcon={entry.icon}
             iconClassName="size-3 opacity-35 grayscale"
           />
         );
@@ -318,6 +321,7 @@ function SidebarThreadTooltip({
               accentColor={providerEntry?.accentColor}
               acpRegistryAgentId={providerEntry?.acpRegistryAgentId}
               acpRegistryIconUrl={providerEntry?.acpRegistryIconUrl}
+              instanceIcon={providerEntry?.icon}
               showBadge={showInstanceBadge && providerEntry?.accentColor !== undefined}
               badgeContent="none"
               badgeClassName="h-2 min-w-2 px-0"

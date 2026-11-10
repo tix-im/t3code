@@ -1,7 +1,7 @@
 import type { PluginProviderSettingsProps } from "../../src/plugins/api";
 import { Button, RefreshIcon } from "../../src/plugins/host";
 import { useTiximFieldOverrides } from "./tiximSettingsOptions";
-import { configString } from "./tiximSettingsOptions.logic";
+import { configString, withHarnessBranding } from "./tiximSettingsOptions.logic";
 
 export function ProviderSettings(props: PluginProviderSettingsProps) {
   const choices = useTiximFieldOverrides(props.environmentId, props.value, props.instanceId);
@@ -10,9 +10,15 @@ export function ProviderSettings(props: PluginProviderSettingsProps) {
       next !== undefined &&
       configString(next, "context") !== configString(props.value, "context")
     ) {
-      const { harness: _harness, ...rest } = next;
+      const {
+        harness: _harness,
+        harnessLabel: _harnessLabel,
+        harnessIcon: _harnessIcon,
+        ...rest
+      } = next;
       props.onChange(Object.keys(rest).length ? rest : undefined);
-    } else props.onChange(next);
+    } else
+      props.onChange(next && withHarnessBranding(next, props.value, choices?.harnesses ?? null));
   };
   return (
     <>

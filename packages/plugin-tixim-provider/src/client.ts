@@ -10,12 +10,12 @@ export const tiximClient = defineProviderClient({
   hasDefaultInstance: false,
   icon: {
     viewBox: "0 0 24 24",
-    fill: { light: "#000000", dark: "#FFFFFF" },
+    // The TiX mark (i-dot and pointer), tixim's `tix` harness icon.
+    fill: { light: "#4A3CD6", dark: "#8478F0" },
     paths: [
+      { d: "M0 6.52a4.15 4.15 0 1 0 8.3 0 4.15 4.15 0 1 0-8.3 0" },
       {
-        // A "t" inside a rounded frame.
-        d: "M6 2h12a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4Zm0 2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6Zm4.5 2.5h2.25v3h3.75v2.25h-3.75v3.5c0 .69.56 1.25 1.25 1.25h2.5v2.25h-2.5a3.5 3.5 0 0 1-3.5-3.5v-3.5H8V9.5h2.5v-3Z",
-        fillRule: "evenodd",
+        d: "M19.56 12.44c-2.37 0-11.26 2.97-11.26 4.45s8.89 4.44 11.26 4.44a4.44 4.44 0 0 0 0-8.89",
       },
     ],
   },

@@ -60,6 +60,7 @@ export function useTiximFieldOverrides(
   );
   if (environmentId === undefined) return undefined;
   return {
+    harnesses: harnesses.data?.harnesses ?? null,
     isPending:
       refreshing ||
       contexts.isPending ||

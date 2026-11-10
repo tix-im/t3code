@@ -18,10 +18,34 @@ export const TiximListContextsResult = Schema.Struct({
 });
 export type TiximListContextsResult = typeof TiximListContextsResult.Type;
 
+const TiximIconFill = Schema.Struct({ light: Schema.String, dark: Schema.String });
+const TiximIcon = Schema.Struct({
+  viewBox: Schema.String,
+  fill: TiximIconFill,
+  paths: Schema.Array(
+    Schema.Struct({
+      d: Schema.String,
+      fillRule: Schema.optional(Schema.Literals(["evenodd", "nonzero"])),
+      fill: Schema.optional(TiximIconFill),
+    }),
+  ),
+});
+
+/** tixim's harness icon standard: the brand's own logo and its TiX-merged variant. */
+export const TiximHarnessIcon = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  plain: TiximIcon,
+  tixim: TiximIcon,
+});
+export type TiximHarnessIcon = typeof TiximHarnessIcon.Type;
+
 export const TiximHarness = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   authenticated: Schema.Boolean,
+  /** Absent on daemons older than the harness icon standard. */
+  icon: Schema.optional(TiximHarnessIcon),
 });
 export type TiximHarness = typeof TiximHarness.Type;
 

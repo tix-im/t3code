@@ -7,15 +7,19 @@ import {
   providerInstanceInitials,
 } from "@t3tools/client-runtime/state/provider-instance-display";
 import { useId, useState } from "react";
-import { resolveOfficialAcpRegistryIconUrl } from "@t3tools/contracts";
+import { resolveOfficialAcpRegistryIconUrl, type ServerProviderIcon } from "@t3tools/contracts";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { AppText as Text } from "./ui/AppText";
 import { cn } from "../lib/cn";
 import { getProviderClient, openRouterIcon } from "@t3tools/client-runtime/provider-clients";
 
+type ProviderClientIcon = NonNullable<ReturnType<typeof getProviderClient>>["icon"];
+
 type ProviderIconProps = {
   readonly provider: string | null | undefined;
   readonly iconUrl?: string | null | undefined;
+  /** The instance's own icon, ahead of its driver's. */
+  readonly instanceIcon?: ServerProviderIcon | undefined;
   readonly size?: number;
 };
 
@@ -99,8 +103,9 @@ export function ProviderIcon(props: ProviderIconProps) {
     );
   }
 
-  const packageIcon =
-    props.provider === "openrouter" ? openRouterIcon : getProviderClient(props.provider)?.icon;
+  const packageIcon: ProviderClientIcon | undefined =
+    props.instanceIcon ??
+    (props.provider === "openrouter" ? openRouterIcon : getProviderClient(props.provider)?.icon);
   if (packageIcon) {
     const themeFill = (fill: { readonly light: string; readonly dark: string }) =>
       isDarkMode ? fill.dark : fill.light;
@@ -169,6 +174,7 @@ export function providerInstanceNameLabel(props: {
 
 export function ProviderInstanceIcon(props: {
   readonly iconUrl?: string | null;
+  readonly instanceIcon?: ServerProviderIcon | undefined;
   readonly provider: string | null | undefined;
   readonly size?: number;
   readonly displayName: string;
@@ -180,7 +186,12 @@ export function ProviderInstanceIcon(props: {
   return (
     <View style={{ position: "relative" }}>
       <View style={{ opacity: 0.6 }}>
-        <ProviderIcon iconUrl={props.iconUrl} provider={props.provider} size={props.size} />
+        <ProviderIcon
+          iconUrl={props.iconUrl}
+          instanceIcon={props.instanceIcon}
+          provider={props.provider}
+          size={props.size}
+        />
       </View>
       {props.showBadge ? (
         // An absolute badge alone is capped at icon width and clips initials.
