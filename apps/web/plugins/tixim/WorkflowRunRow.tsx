@@ -95,6 +95,7 @@ function WorkflowRunDetails({
   return (
     <ThreadHoverCard
       title={title}
+      wide
       footer={
         onOpen ? (
           <div className="border-t border-border/65 pt-1">
@@ -107,7 +108,7 @@ function WorkflowRunDetails({
         ) : undefined
       }
     >
-      <div className="flex w-72 max-w-full min-w-0 items-center justify-between gap-4">
+      <div className="flex w-88 max-w-full min-w-0 items-center justify-between gap-4">
         <span
           className={cn(
             "inline-flex min-w-0 items-center gap-1 font-medium",
@@ -259,7 +260,7 @@ export function WorkflowRunRow({
             ) : null}
           </span>
         </TooltipTrigger>
-        <ThreadHoverCardPopup side="left" className="pointer-events-auto">
+        <ThreadHoverCardPopup side="left" className="pointer-events-auto max-w-96">
           <WorkflowRunDetails
             run={run}
             glyph={glyph}
