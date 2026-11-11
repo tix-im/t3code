@@ -4,6 +4,7 @@ import { useState, type SyntheticEvent } from "react";
 import type { PluginSidebarThreadActionProps } from "../../src/plugins/api";
 import {
   cn,
+  CopyValueButton,
   Dialog,
   DialogPopup,
   Popover,
@@ -20,8 +21,9 @@ import { FlowFrame } from "./FlowFrame";
 import { workflowOverviewAtom } from "./sidebarThreads";
 import { DialogRunTitle } from "./ThreadWorkflowsControl";
 import { WorkflowTally } from "./WorkflowTally";
+import { WORKFLOW_TREE_INDENT, WorkflowTreeGuides } from "./WorkflowTreeGuides";
 import {
-  isFinishedWorkflowState,
+  orderedRuns,
   WORKFLOW_TONE_CLASS,
   workflowRunElapsed,
   workflowRunKey,
@@ -48,11 +50,7 @@ export function WorkflowsRowAction({
   const overview = useEnvironmentQuery(workflowOverviewAtom(environmentId));
   const nowSeconds = Date.parse(`${useNowMinute()}:00Z`) / 1000;
   const thread = overview.data?.threads.find((entry) => entry.threadId === threadId);
-  const runs = (thread?.runs ?? []).toSorted(
-    (a, b) =>
-      Number(isFinishedWorkflowState(a.state)) - Number(isFinishedWorkflowState(b.state)) ||
-      (b.submittedAt ?? 0) - (a.submittedAt ?? 0),
-  );
+  const runs = orderedRuns(thread?.runs ?? []);
   const change = (popover: boolean, run: TiximWorkflowRun | null) => {
     setOpen(popover);
     setSelected(run);
@@ -84,17 +82,28 @@ export function WorkflowsRowAction({
               Workflows
             </h3>
             <ul className="m-0 list-none p-0">
-              {runs.map((run) => {
+              {runs.map((entry) => {
+                const { run } = entry;
                 const glyph = workflowStateGlyph(run.state);
                 const { icon: Icon } = glyph;
                 const elapsed = workflowRunElapsed(run, nowSeconds);
                 const waited = thread?.waitingOn.includes(workflowRunKey(run)) === true;
                 return (
-                  <li key={workflowRunKey(run)}>
+                  <li
+                    key={workflowRunKey(run)}
+                    className="group/run relative flex items-center"
+                    style={
+                      entry.depth > 0
+                        ? { paddingInlineStart: entry.depth * WORKFLOW_TREE_INDENT }
+                        : undefined
+                    }
+                  >
+                    <WorkflowTreeGuides entry={entry} iconCenterY={16} />
                     <ThreadDetailsControl
                       size="sm"
                       variant="ghost"
                       part="row"
+                      className="min-w-0 flex-1"
                       aria-label={`Inspect ${workflowRunTitle(run)}, ${glyph.label}${waited ? ", waited on" : ""}`}
                       onClick={() => change(false, run)}
                     >
@@ -120,6 +129,9 @@ export function WorkflowsRowAction({
                         </span>
                       ) : null}
                     </ThreadDetailsControl>
+                    <span className="flex shrink-0 opacity-0 group-hover/run:opacity-100 group-focus-within/run:opacity-100 pointer-coarse:opacity-100">
+                      <CopyValueButton value={run.hid ?? run.runId} label="Copy workflow ID" />
+                    </span>
                   </li>
                 );
               })}

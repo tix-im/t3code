@@ -11,6 +11,7 @@ import {
   Button,
   cn,
   Command,
+  CopyValueButton,
   CommandInput,
   CommandItem,
   CommandList,
@@ -67,9 +68,12 @@ function ResultRow({ run, attaching }: { run: TiximWorkflowRun; attaching: boole
         <span className="truncate text-sm leading-4 text-foreground/85">
           {workflowRunTitle(run)}
         </span>
-        <span className="truncate text-2xs leading-4 text-muted-foreground">
-          {run.hid ?? run.runId}
-          <span className="sr-only">, {glyph.label}</span>
+        <span className="flex min-w-0 items-center gap-1 text-2xs leading-4 text-muted-foreground">
+          <span className="truncate">
+            {run.hid ?? run.runId}
+            <span className="sr-only">, {glyph.label}</span>
+          </span>
+          <CopyValueButton value={run.hid ?? run.runId} label="Copy workflow ID" />
         </span>
       </span>
       <span className="shrink-0 text-2xs">

@@ -61,6 +61,11 @@ vi.mock(import("../../src/state/query"), async (original) => ({
     };
   }) as never,
 }));
+// Loading the real settings layout outside the app stalls the browser run before any test.
+vi.mock(
+  import("../../src/components/settings/settingsLayout"),
+  () => ({ SettingsSection: () => null, SettingsRow: () => null }) as never,
+);
 vi.mock(import("../../src/plugins/host"), async (original) => ({
   ...(await original()),
   useAtomCommand: (() => state.changeLink) as never,
@@ -106,6 +111,8 @@ it("attaches a suggested dependency from the selected daemon and searches withou
     query: "",
     mentionedOnly: true,
   });
+  expect(state.changeLink).not.toHaveBeenCalled();
+  await page.getByRole("button", { name: "Copy workflow ID" }).first().click();
   expect(state.changeLink).not.toHaveBeenCalled();
   await expect.element(page.getByRole("button", { name: "Attach as Untracked" })).toBeVisible();
   await page.getByRole("button", { name: /^Attach as/ }).click();

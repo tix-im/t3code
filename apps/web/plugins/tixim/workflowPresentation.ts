@@ -237,3 +237,50 @@ export function formatWorkflowTime(seconds: number): string {
     timeStyle: "short",
   });
 }
+
+export interface OrderedWorkflowRun {
+  readonly run: TiximWorkflowRun;
+  readonly depth: number;
+  /** For each ancestor column left of this row's own, whether its line runs past this row. */
+  readonly rails: ReadonlyArray<boolean>;
+  /** The last child of its parent, so its own column ends at this row. */
+  readonly last: boolean;
+  readonly hasChildren: boolean;
+}
+
+/** Active runs first, then newest, with each child under its parent. */
+export function orderedRuns(runs: ReadonlyArray<TiximWorkflowRun>): OrderedWorkflowRun[] {
+  const sorted = runs.toSorted(
+    (a, b) =>
+      Number(isFinishedWorkflowState(a.state)) - Number(isFinishedWorkflowState(b.state)) ||
+      (b.submittedAt ?? 0) - (a.submittedAt ?? 0),
+  );
+  const seen = new Set<string>();
+  const ordered: OrderedWorkflowRun[] = [];
+  // Callers claim a run in `seen` before visiting it, so siblings know which of them is last.
+  const visit = (run: TiximWorkflowRun, depth: number, rails: boolean[], last: boolean) => {
+    const children = sorted.filter(
+      (child) =>
+        child.daemonId === run.daemonId &&
+        child.parentRunId === run.runId &&
+        !seen.has(workflowRunKey(child)),
+    );
+    for (const child of children) seen.add(workflowRunKey(child));
+    ordered.push({ run, depth, rails, last, hasChildren: children.length > 0 });
+    const childRails = depth === 0 ? [] : [...rails, !last];
+    children.forEach((child, index) =>
+      visit(child, depth + 1, childRails, index === children.length - 1),
+    );
+  };
+  const visitRoot = (run: TiximWorkflowRun) => {
+    if (seen.has(workflowRunKey(run))) return;
+    seen.add(workflowRunKey(run));
+    visit(run, 0, [], true);
+  };
+  for (const run of sorted)
+    if (!sorted.some((other) => other.daemonId === run.daemonId && other.runId === run.parentRunId))
+      visitRoot(run);
+  // A parent cycle has no root, and its runs must still be listed.
+  for (const run of sorted) visitRoot(run);
+  return ordered;
+}

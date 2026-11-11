@@ -8,6 +8,7 @@ import {
   AppText,
   AppTextInput,
   Button,
+  copyTextWithHaptic,
   useAtomCommand,
   useEnvironmentQuery,
 } from "../../src/plugins/host";
@@ -119,6 +120,13 @@ export function ThreadWorkflows({
                 <AppText>
                   {run.availability === "available" ? run.state : "Unavailable"} · {run.daemonId}
                 </AppText>
+                <Button
+                  label="Copy ID"
+                  tone="text"
+                  onPress={() =>
+                    copyTextWithHaptic(run.hid ?? run.runId, { target: "workflow ID" })
+                  }
+                />
                 <Button
                   label={
                     tracked

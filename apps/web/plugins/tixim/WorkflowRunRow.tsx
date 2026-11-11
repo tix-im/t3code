@@ -7,25 +7,37 @@ import {
 import {
   ActivityIcon,
   ArrowUpRightIcon,
+  BanIcon,
   ClockIcon,
+  CopyIcon,
   EllipsisIcon,
   FlagIcon,
   HourglassIcon,
   LinkIcon,
   ListChecksIcon,
+  PauseIcon,
   PlayIcon,
+  RotateCcwIcon,
+  ScrollTextIcon,
+  SnowflakeIcon,
+  SunIcon,
+  UnlinkIcon,
   WorkflowIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
   cn,
+  CopyValueButton,
   Menu,
   MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
   MenuTrigger,
   THREAD_DETAILS_PANEL_ICON_CLASS,
   ThreadDetailsControl,
@@ -34,9 +46,16 @@ import {
   Tooltip,
   TooltipTrigger,
   useNowMinute,
+  writeTextToClipboard,
 } from "../../src/plugins/host";
 import { WorkflowRunLog } from "./WorkflowRunLog";
+import {
+  allowedWorkflowRunActions,
+  WORKFLOW_RUN_ACTION_LABELS,
+  type WorkflowRunAction,
+} from "./workflowActions";
 import { WorkflowTally } from "./WorkflowTally";
+import { WORKFLOW_TREE_INDENT, WorkflowTreeGuides } from "./WorkflowTreeGuides";
 import {
   formatWorkflowTime,
   isFinishedWorkflowState,
@@ -50,8 +69,18 @@ import {
   workflowStateGlyph,
   workflowStepCounts,
   workflowStepProgress,
+  type OrderedWorkflowRun,
   type WorkflowGlyph,
 } from "./workflowPresentation";
+
+const ACTION_ICONS: Record<WorkflowRunAction, LucideIcon> = {
+  suspend: PauseIcon,
+  resume: PlayIcon,
+  freeze: SnowflakeIcon,
+  thaw: SunIcon,
+  restart: RotateCcwIcon,
+  cancel: BanIcon,
+};
 
 const SOURCE_LABELS: Record<TiximWorkflowRun["source"], string> = {
   agent_session: "hosts this chat's agent",
@@ -128,7 +157,10 @@ function WorkflowRunDetails({
         </span>
         {elapsed ? <span className="shrink-0 tabular-nums">{elapsed}</span> : null}
       </div>
-      <span className="truncate">{run.hid ?? run.runId}</span>
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate">{run.hid ?? run.runId}</span>
+        <CopyValueButton value={run.hid ?? run.runId} label="Copy workflow ID" />
+      </span>
       <div aria-hidden className="h-px bg-border/65" />
       {run.definitionName && run.definitionName !== title ? (
         <DetailRow icon={WorkflowIcon} label="Workflow">
@@ -207,23 +239,25 @@ export function WorkflowRunRow({
   environmentId,
   threadId,
   run,
-  depth,
+  tree,
   refreshing,
   busy,
   onOpen,
   onRelationshipChange,
   onDetach,
+  onAction,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
   run: TiximWorkflowRun;
-  depth: number;
+  tree: OrderedWorkflowRun;
   /** The daemon has not answered yet, so the saved state is shown rather than "unavailable". */
   refreshing: boolean;
   busy: boolean;
   onOpen: (run: TiximWorkflowRun) => void;
   onRelationshipChange: (run: TiximWorkflowRun, relationship: TiximWorkflowRelationship) => void;
   onDetach: (run: TiximWorkflowRun) => void;
+  onAction: (run: TiximWorkflowRun, action: WorkflowRunAction) => void;
 }) {
   const nowSeconds = Date.parse(`${useNowMinute()}:00Z`) / 1000;
   const available = run.availability === "available";
@@ -240,12 +274,23 @@ export function WorkflowRunRow({
     known && !isFinishedWorkflowState(run.state) ? workflowStepProgress(run.steps) : null;
   const [logOpen, setLogOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const actions = available ? allowedWorkflowRunActions(run.state) : [];
   return (
     <li
-      className="group relative flex flex-col rounded-lg"
-      style={depth > 0 ? { marginInlineStart: depth * 12 } : undefined}
+      className="group relative flex flex-wrap items-center rounded-lg"
+      onContextMenu={(event) => {
+        if (busy) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setMenuPosition({ x: event.clientX, y: event.clientY });
+        setMenuOpen(true);
+      }}
+      style={tree.depth > 0 ? { paddingInlineStart: tree.depth * WORKFLOW_TREE_INDENT } : undefined}
     >
-      <Tooltip open={hovered} onOpenChange={setHovered}>
+      <WorkflowTreeGuides entry={tree} iconCenterY={14} />
+      <Tooltip open={hovered && !menuOpen} onOpenChange={setHovered}>
         <TooltipTrigger
           delay={200}
           render={
@@ -315,7 +360,13 @@ export function WorkflowRunRow({
         </ThreadHoverCardPopup>
       </Tooltip>
       <div className="pointer-events-none absolute top-1 right-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-        <Menu>
+        <Menu
+          open={menuOpen}
+          onOpenChange={(open) => {
+            setMenuOpen(open);
+            if (!open) setMenuPosition(null);
+          }}
+        >
           <MenuTrigger
             render={
               <ThreadDetailsControl
@@ -329,28 +380,75 @@ export function WorkflowRunRow({
           >
             <EllipsisIcon aria-hidden className="size-3.5" />
           </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuRadioGroup
-              value={run.relationship}
-              onValueChange={(value: TiximWorkflowRelationship) => onRelationshipChange(run, value)}
-              aria-label="Relationship to this chat"
+          <MenuPopup
+            anchor={
+              menuPosition
+                ? {
+                    getBoundingClientRect: () => new DOMRect(menuPosition.x, menuPosition.y, 0, 0),
+                  }
+                : undefined
+            }
+            align={menuPosition ? "start" : "end"}
+            sideOffset={menuPosition ? 0 : 4}
+          >
+            <MenuItem
+              onClick={() => void writeTextToClipboard(run.hid ?? run.runId, "workflow ID")}
             >
-              {TiximWorkflowRelationship.literals.map((value) => (
-                <MenuRadioItem key={value} value={value} closeOnClick disabled={!available}>
-                  {WORKFLOW_RELATIONSHIP_LABELS[value]}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
+              <CopyIcon />
+              Copy ID
+            </MenuItem>
+            {actions.length > 0 ? <MenuSeparator /> : null}
+            {actions.map((action) => {
+              const ActionIcon = ACTION_ICONS[action];
+              return (
+                <MenuItem
+                  key={action}
+                  variant={action === "cancel" ? "destructive" : "default"}
+                  onClick={() => onAction(run, action)}
+                >
+                  <ActionIcon />
+                  {WORKFLOW_RUN_ACTION_LABELS[action]}
+                  {action === "cancel" || action === "restart" ? "…" : null}
+                </MenuItem>
+              );
+            })}
             <MenuSeparator />
             <MenuItem disabled={!available} onClick={() => setLogOpen((value) => !value)}>
+              <ScrollTextIcon />
               {logOpen ? "Hide log" : "Show log"}
             </MenuItem>
-            <MenuItem onClick={() => onDetach(run)}>Detach</MenuItem>
+            <MenuSub>
+              <MenuSubTrigger disabled={!available}>
+                <LinkIcon />
+                {WORKFLOW_RELATIONSHIP_LABELS[run.relationship]}
+              </MenuSubTrigger>
+              <MenuSubPopup>
+                <MenuRadioGroup
+                  value={run.relationship}
+                  onValueChange={(value: TiximWorkflowRelationship) =>
+                    onRelationshipChange(run, value)
+                  }
+                  aria-label="Relationship to this chat"
+                >
+                  {TiximWorkflowRelationship.literals.map((value) => (
+                    <MenuRadioItem key={value} value={value} closeOnClick>
+                      {WORKFLOW_RELATIONSHIP_LABELS[value]}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuSubPopup>
+            </MenuSub>
+            <MenuItem onClick={() => onDetach(run)}>
+              <UnlinkIcon />
+              Detach
+            </MenuItem>
           </MenuPopup>
         </Menu>
       </div>
       {logOpen && available ? (
-        <WorkflowRunLog environmentId={environmentId} threadId={threadId} run={run} />
+        <div className="basis-full">
+          <WorkflowRunLog environmentId={environmentId} threadId={threadId} run={run} />
+        </div>
       ) : null}
     </li>
   );
