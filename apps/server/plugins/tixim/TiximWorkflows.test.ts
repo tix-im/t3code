@@ -23,6 +23,7 @@ import {
   live,
   overview,
   link,
+  logTail,
   search,
   rpc,
   allowedFlowMethod,
@@ -692,6 +693,67 @@ describe("thread workflows", () => {
       ),
     ),
   );
+  it.effect("follows only linked runs and stops after reading a finished one", () => {
+    const requests: ProcessRunner.ProcessRunInput[] = [];
+    const logs = encode({
+      records: [
+        { cursor: { seq: 1, line: 0 }, text: "started", lane: "runner" },
+        { cursor: { seq: 2, line: 3 }, text: "built", step: "build", lane: { step: {} } },
+      ],
+    });
+    const target = { threadId: "thread-a", daemonId: "one", runId: "wf-1" };
+    return Effect.gen(function* () {
+      yield* setup;
+      const unlinked = yield* logTail(target).pipe(Stream.runCollect, Effect.flip);
+      expect(unlinked.message).toContain("unavailable or access was denied");
+      expect(requests).toHaveLength(0);
+      yield* list("thread-a");
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE tixim_workflow_links SET payload_json = json_set(payload_json, '$.state', 'completed')`;
+      const updates = yield* logTail(target).pipe(Stream.runCollect);
+      expect(updates).toEqual([
+        {
+          lines: [
+            { key: "1:0", text: "started" },
+            { key: "2:3", text: "built", step: "build" },
+          ],
+          finished: true,
+        },
+      ]);
+      expect(requests.at(-1)?.args).toEqual([
+        "--context",
+        "one",
+        "-o",
+        "json",
+        "workflows",
+        "logs",
+        "wf-1",
+        "--tail",
+        "60",
+      ]);
+      const foreign = yield* logTail({ ...target, threadId: "thread-b" }).pipe(
+        Stream.runCollect,
+        Effect.flip,
+      );
+      expect(foreign.message).toContain("unavailable or access was denied");
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          base,
+          runner((input) => {
+            if (input.args.includes("flow-bridge")) {
+              return encode({
+                daemonId: "one",
+                runs: input.args.includes("one") ? [run("wf-1")] : [],
+              });
+            }
+            requests.push(input);
+            return logs;
+          }),
+        ),
+      ),
+    );
+  });
   it("separates read and write methods and rejects unrelated services", () => {
     expect(allowedFlowMethod("tix.control.v1.WorkflowsControl/GetWorkflowDetail", false)).toBe(
       true,

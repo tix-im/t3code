@@ -8,6 +8,7 @@ import {
   type TiximWorkflowConnection,
   type TiximWorkflowRelationship,
   type TiximWorkflowLinkInput,
+  type TiximWorkflowLogInput,
   type TiximWorkflowSearchInput,
   type TiximFlowRpcInput,
 } from "@t3tools/contracts";
@@ -573,6 +574,64 @@ export const live = (threadId: string) =>
     ),
     Stream.fromEffectSchedule(safe(list(threadId)), Schedule.spaced("5 seconds")),
   ).pipe(Stream.changesWith((a, b) => encodeList(a) === encodeList(b)));
+
+const LOG_TAIL_LINES = 60;
+const LogRecords = Schema.Struct({
+  records: Schema.Array(
+    Schema.Struct({
+      cursor: Schema.Struct({ seq: Schema.Number, line: Schema.Number }),
+      text: Schema.String,
+      step: Schema.optional(Schema.String),
+    }),
+  ),
+});
+const decodeLogRecords = Schema.decodeEffect(Schema.fromJsonString(LogRecords));
+
+const readLog = Effect.fn("TiximWorkflows.readLog")(function* (input: TiximWorkflowLogInput) {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    payload_json: string;
+  }>`SELECT payload_json FROM tixim_workflow_links WHERE thread_id = ${input.threadId} AND daemon_id = ${input.daemonId} AND run_id = ${input.runId} AND excluded = 0`;
+  if (rows.length === 0) return yield* failure();
+  const run = decodeRun(rows[0]!.payload_json);
+  const selected = yield* connection(run.connectionId);
+  const runner = yield* ProcessRunner.ProcessRunner;
+  const output = yield* runner.run({
+    command: resolveTiximCommand(selected.environment),
+    args: [
+      ...(selected.context ? ["--context", selected.context] : []),
+      "-o",
+      "json",
+      "workflows",
+      "logs",
+      input.runId,
+      "--tail",
+      String(LOG_TAIL_LINES),
+    ],
+    env: { ...selected.environment, TIX_WAIT_FOR_DAEMON: "0" },
+    timeout: "45 seconds",
+    maxOutputBytes: 4 * 1024 * 1024,
+  });
+  if (output.code !== 0) return yield* failure();
+  const { records } = yield* decodeLogRecords(output.stdout);
+  return {
+    lines: records.map(({ cursor, text, step }) => ({
+      key: `${cursor.seq}:${cursor.line}`,
+      text,
+      ...(step ? { step } : {}),
+    })),
+    finished: FINISHED_STATES.has(run.state),
+  };
+});
+
+/** Follows a linked run's log tail, ending once a finished run has been read. */
+export const logTail = (input: TiximWorkflowLogInput) =>
+  Stream.fromEffectSchedule(safe(readLog(input)), Schedule.spaced("3 seconds")).pipe(
+    Stream.takeUntil((tail) => tail.finished),
+    Stream.changesWith(
+      (a, b) => a.finished === b.finished && a.lines.at(-1)?.key === b.lines.at(-1)?.key,
+    ),
+  );
 
 const encodeOverview = Schema.encodeSync(Schema.fromJsonString(TiximWorkflowOverview));
 

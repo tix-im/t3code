@@ -222,6 +222,8 @@ export function ThreadWorkflowsControl({
       {items.map(({ run, depth }) => (
         <WorkflowRunRow
           key={workflowRunKey(run)}
+          environmentId={environmentId}
+          threadId={threadId}
           run={run}
           depth={depth}
           refreshing={connections.some((value) => value.id === run.connectionId && value.loading)}

@@ -1,4 +1,9 @@
-import { TiximWorkflowRelationship, type TiximWorkflowRun } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type ThreadId,
+  TiximWorkflowRelationship,
+  type TiximWorkflowRun,
+} from "@t3tools/contracts";
 import {
   ActivityIcon,
   ArrowUpRightIcon,
@@ -30,9 +35,11 @@ import {
   TooltipTrigger,
   useNowMinute,
 } from "../../src/plugins/host";
+import { WorkflowRunLog } from "./WorkflowRunLog";
 import { WorkflowTally } from "./WorkflowTally";
 import {
   formatWorkflowTime,
+  isFinishedWorkflowState,
   WORKFLOW_RELATIONSHIP_LABELS,
   WORKFLOW_TONE_CLASS,
   workflowReportCounts,
@@ -42,6 +49,7 @@ import {
   workflowRunTitle,
   workflowStateGlyph,
   workflowStepCounts,
+  workflowStepProgress,
   type WorkflowGlyph,
 } from "./workflowPresentation";
 
@@ -173,7 +181,31 @@ function WorkflowRunDetails({
   );
 }
 
+function WorkflowProgressBar({
+  done,
+  total,
+  failed,
+}: NonNullable<ReturnType<typeof workflowStepProgress>>) {
+  return (
+    <span
+      role="progressbar"
+      aria-label="Workflow steps"
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={done}
+      className="block h-1 overflow-hidden rounded-full bg-muted"
+    >
+      <span
+        className={cn("block h-full", failed ? "bg-destructive" : "bg-info")}
+        style={{ width: `${(done / total) * 100}%` }}
+      />
+    </span>
+  );
+}
+
 export function WorkflowRunRow({
+  environmentId,
+  threadId,
   run,
   depth,
   refreshing,
@@ -182,6 +214,8 @@ export function WorkflowRunRow({
   onRelationshipChange,
   onDetach,
 }: {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
   run: TiximWorkflowRun;
   depth: number;
   /** The daemon has not answered yet, so the saved state is shown rather than "unavailable". */
@@ -202,10 +236,13 @@ export function WorkflowRunRow({
   const reports = workflowReportCounts(run.reports);
   const note = known ? workflowRunNote(run) : null;
   const NoteIcon = note?.icon;
+  const progress =
+    known && !isFinishedWorkflowState(run.state) ? workflowStepProgress(run.steps) : null;
+  const [logOpen, setLogOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   return (
     <li
-      className="group relative flex items-center rounded-lg"
+      className="group relative flex flex-col rounded-lg"
       style={depth > 0 ? { marginInlineStart: depth * 12 } : undefined}
     >
       <Tooltip open={hovered} onOpenChange={setHovered}>
@@ -241,6 +278,7 @@ export function WorkflowRunRow({
                 </span>
               ) : null}
             </span>
+            {progress ? <WorkflowProgressBar {...progress} /> : null}
             {steps.length > 0 || reports.length > 0 ? (
               <span className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 text-2xs font-normal leading-4">
                 <WorkflowTally counts={steps} />
@@ -304,10 +342,16 @@ export function WorkflowRunRow({
               ))}
             </MenuRadioGroup>
             <MenuSeparator />
+            <MenuItem disabled={!available} onClick={() => setLogOpen((value) => !value)}>
+              {logOpen ? "Hide log" : "Show log"}
+            </MenuItem>
             <MenuItem onClick={() => onDetach(run)}>Detach</MenuItem>
           </MenuPopup>
         </Menu>
       </div>
+      {logOpen && available ? (
+        <WorkflowRunLog environmentId={environmentId} threadId={threadId} run={run} />
+      ) : null}
     </li>
   );
 }

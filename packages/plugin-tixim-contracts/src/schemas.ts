@@ -281,10 +281,26 @@ export const TiximFlowRpcInput = Schema.Struct({
   method: Schema.String,
   body: Schema.String.check(Schema.isMaxLength(12 * 1024 * 1024)),
 });
+export const TiximWorkflowLogInput = Schema.Struct({
+  threadId: Schema.String,
+  daemonId: Schema.String,
+  runId: Schema.String,
+});
+export const TiximWorkflowLogResult = Schema.Struct({
+  lines: Schema.Array(
+    Schema.Struct({
+      key: Schema.String,
+      text: Schema.String,
+      step: Schema.optional(Schema.String),
+    }),
+  ),
+  finished: Schema.Boolean,
+});
 
 export type TiximWorkflowLinkInput = typeof TiximWorkflowLinkInput.Type;
 export type TiximWorkflowSearchInput = typeof TiximWorkflowSearchInput.Type;
 export type TiximFlowRpcInput = typeof TiximFlowRpcInput.Type;
+export type TiximWorkflowLogInput = typeof TiximWorkflowLogInput.Type;
 export type TiximConnectionsInput = typeof TiximConnectionsInput.Type;
 
 export const DesktopTiximProjectSchema = Schema.Struct({
