@@ -7,8 +7,16 @@ import type {
 import { AlarmClockIcon, ArrowLeftIcon, PlusIcon, WorkflowIcon } from "lucide-react";
 import { useState } from "react";
 import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
   Button,
   cn,
+  CopyValueButton,
   Dialog,
   DialogPopup,
   DialogTitle,
@@ -24,11 +32,17 @@ import {
 } from "../../src/plugins/host";
 import { FlowFrame } from "./FlowFrame";
 import { workflowEnvironment } from "./state";
+import {
+  WORKFLOW_RUN_ACTION_LABELS,
+  workflowRunAction,
+  type WorkflowRunAction,
+} from "./workflowActions";
 import { WorkflowAttachPicker } from "./WorkflowAttachPicker";
 import { WorkflowRunRow } from "./WorkflowRunRow";
 import { WorkflowTally } from "./WorkflowTally";
 import {
   isFinishedWorkflowState,
+  orderedRuns,
   WORKFLOW_TONE_CLASS,
   workflowRunCounts,
   workflowRunKey,
@@ -39,40 +53,22 @@ import {
 export function DialogRunTitle({ run }: { run: TiximWorkflowRun }) {
   const glyph = workflowStateGlyph(run.availability === "available" ? run.state : "unavailable");
   const { icon: Icon } = glyph;
+  const title = workflowRunTitle(run);
+  const id = run.hid ?? run.runId;
   return (
     <>
       <Icon aria-hidden className={cn("size-4 shrink-0", WORKFLOW_TONE_CLASS[glyph.tone])} />
+      {/* Names repeat across runs, so the ID stays whole and only the name truncates. */}
       <DialogTitle className="min-w-0">
-        <span className="block truncate py-0.5">{workflowRunTitle(run)}</span>
+        <span className="flex min-w-0 items-baseline gap-2 py-0.5">
+          {title === id ? null : <span className="min-w-0 truncate">{title}</span>}{" "}
+          <span className="shrink-0 font-mono text-sm font-normal text-muted-foreground">{id}</span>
+        </span>
       </DialogTitle>
+      <CopyValueButton value={id} label="Copy workflow ID" />
       <span className={cn("shrink-0 text-xs", WORKFLOW_TONE_CLASS[glyph.tone])}>{glyph.label}</span>
     </>
   );
-}
-
-function orderedRuns(runs: ReadonlyArray<TiximWorkflowRun>) {
-  const sorted = runs.toSorted(
-    (a, b) =>
-      Number(isFinishedWorkflowState(a.state)) - Number(isFinishedWorkflowState(b.state)) ||
-      (b.submittedAt ?? 0) - (a.submittedAt ?? 0),
-  );
-  const seen = new Set<string>();
-  const ordered: Array<{ run: TiximWorkflowRun; depth: number }> = [];
-  const visit = (run: TiximWorkflowRun, depth: number) => {
-    const key = workflowRunKey(run);
-    if (seen.has(key)) return;
-    seen.add(key);
-    ordered.push({ run, depth: Math.min(depth, 4) });
-    for (const child of sorted)
-      if (child.daemonId === run.daemonId && child.parentRunId === run.runId)
-        visit(child, depth + 1);
-  };
-  for (const run of sorted)
-    if (!sorted.some((other) => other.daemonId === run.daemonId && other.runId === run.parentRunId))
-      visit(run, 0);
-  // A parent cycle has no root, and its runs must still be listed.
-  for (const run of sorted) visit(run, 0);
-  return ordered;
 }
 
 export function ThreadWorkflowsControl({
@@ -102,6 +98,11 @@ export function ThreadWorkflowsControl({
   const changeSnooze = useAtomCommand(workflowEnvironment.tiximWorkflowSnooze, {
     reportFailure: false,
   });
+  const runAction = useAtomCommand(workflowRunAction, { reportFailure: false });
+  const [confirming, setConfirming] = useState<{
+    run: TiximWorkflowRun;
+    action: WorkflowRunAction;
+  } | null>(null);
   const [snoozeBusy, setSnoozeBusy] = useState(false);
   const connections = live.data?.connections ?? [];
   const runs = live.data?.runs ?? [];
@@ -138,6 +139,25 @@ export function ThreadWorkflowsControl({
       setAttaching(false);
       live.refresh();
     }
+  };
+  const act = async (run: TiximWorkflowRun, action: WorkflowRunAction) => {
+    setConfirming(null);
+    setBusyKey(workflowRunKey(run));
+    setError(null);
+    const result = await runAction({
+      environmentId,
+      threadId,
+      connectionId: run.connectionId,
+      daemonId: run.daemonId,
+      runId: run.runId,
+      action,
+    });
+    setBusyKey(null);
+    if (result._tag === "Failure")
+      setError(
+        `Could not ${WORKFLOW_RUN_ACTION_LABELS[action].toLowerCase()} ${workflowRunTitle(run)}. Check the connection and your permissions.`,
+      );
+    live.refresh();
   };
   const snoozed = live.data?.snoozed === true;
   const awaitable = runs.some(
@@ -219,18 +239,24 @@ export function ThreadWorkflowsControl({
   );
   const runList = (items: ReturnType<typeof orderedRuns>) => (
     <ul className="m-0 list-none p-0">
-      {items.map(({ run, depth }) => (
+      {items.map((entry) => (
         <WorkflowRunRow
-          key={workflowRunKey(run)}
+          key={workflowRunKey(entry.run)}
           environmentId={environmentId}
           threadId={threadId}
-          run={run}
-          depth={depth}
-          refreshing={connections.some((value) => value.id === run.connectionId && value.loading)}
+          run={entry.run}
+          tree={entry}
+          refreshing={connections.some(
+            (value) => value.id === entry.run.connectionId && value.loading,
+          )}
           busy={busyKey !== null}
           onOpen={setSelected}
           onRelationshipChange={(target, value) => void mutate(target, true, value)}
           onDetach={(target) => void mutate(target, false)}
+          onAction={(target, action) => {
+            if (action === "cancel" || action === "restart") setConfirming({ run: target, action });
+            else void act(target, action);
+          }}
         />
       ))}
     </ul>
@@ -378,6 +404,37 @@ export function ThreadWorkflowsControl({
           )}
         </DialogPopup>
       </Dialog>
+      <AlertDialog
+        open={confirming !== null}
+        onOpenChange={(value) => {
+          if (!value) setConfirming(null);
+        }}
+      >
+        {confirming ? (
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirming.action === "cancel" ? "Cancel" : "Restart"}{" "}
+                {workflowRunTitle(confirming.run)}?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirming.action === "cancel"
+                  ? "Running steps stop and the run cannot be resumed."
+                  : "Tixim starts the run again with the same arguments."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button variant="outline" />}>Keep it</AlertDialogClose>
+              <Button
+                variant={confirming.action === "cancel" ? "destructive" : "default"}
+                onClick={() => void act(confirming.run, confirming.action)}
+              >
+                {WORKFLOW_RUN_ACTION_LABELS[confirming.action]}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        ) : null}
+      </AlertDialog>
     </>
   );
 }

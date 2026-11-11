@@ -16,7 +16,20 @@ export {
   MenuSeparator,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
 } from "../components/ui/menu";
+export {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
+export { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 export { SidebarUtilityItem } from "../components/sidebar/SidebarUtilityItem";
 export { useEnvironmentProviders, useEnvironments } from "../state/environments";
 export { ThreadDetailsSection } from "../components/chat/ThreadDetailsSection";
@@ -25,6 +38,7 @@ export { THREAD_DETAILS_PANEL_ICON_CLASS } from "../components/chat/threadDetail
 export { ThreadHoverCard, ThreadHoverCardPopup } from "../components/ThreadHoverCard";
 export { Command, CommandInput, CommandItem, CommandList } from "../components/ui/command";
 export { Spinner } from "../components/ui/spinner";
+export { CopyValueButton } from "../components/CopyValueButton";
 export { useHtmlRenderTheme } from "../hooks/useHtmlRenderTheme";
 export { useNowMinute } from "../hooks/useNowMinute";
 

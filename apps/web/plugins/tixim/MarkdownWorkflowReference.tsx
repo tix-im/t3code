@@ -4,6 +4,7 @@ import { useContext, useState } from "react";
 import {
   useAtomCommand,
   Button,
+  CopyValueButton,
   PreviewCard,
   PreviewCardPopup,
   PreviewCardTrigger,
@@ -91,7 +92,10 @@ export function MarkdownWorkflowReference({
       </PreviewCardTrigger>
       <PreviewCardPopup>
         <div className="w-80 max-w-[calc(100vw-2rem)] space-y-3 p-3 text-sm">
-          <strong className="break-all">{hid}</strong>
+          <div className="flex items-center gap-1">
+            <strong className="break-all">{hid}</strong>
+            <CopyValueButton value={hid} label="Copy workflow ID" />
+          </div>
           {state.runs.length === 0 ? (
             <p>{status}</p>
           ) : (
