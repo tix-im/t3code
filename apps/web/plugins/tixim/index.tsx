@@ -2,6 +2,7 @@ import { FolderGit2Icon } from "lucide-react";
 import type { WebPlugin } from "../../src/plugins/api";
 import { lazy, Suspense } from "react";
 import { rehypeWorkflowReferences } from "./markdownWorkflowReferences";
+import { useSidebarWorkflowThreads } from "./sidebarThreads";
 const MarkdownWorkflowReference = lazy(() =>
   import("./MarkdownWorkflowReference").then((module) => ({
     default: module.MarkdownWorkflowReference,
@@ -13,6 +14,10 @@ const ThreadWorkflowsControl = lazy(() =>
 
 const TiximSidebarUtility = lazy(() =>
   import("./TiximConsole").then((module) => ({ default: module.TiximSidebarUtility })),
+);
+
+const WorkflowsRowAction = lazy(() =>
+  import("./WorkflowsRowAction").then((module) => ({ default: module.WorkflowsRowAction })),
 );
 
 const ProviderSettings = lazy(() =>
@@ -53,6 +58,7 @@ export const tiximPlugin: WebPlugin = {
   },
   ThreadHeader: ThreadWorkflowsControl,
   SidebarUtility: TiximSidebarUtility,
+  sidebarThreads: { useThreads: useSidebarWorkflowThreads, RowAction: WorkflowsRowAction },
   threadDetails: {
     id: "workflows",
     label: "Workflows",

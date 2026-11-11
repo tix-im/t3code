@@ -5,6 +5,7 @@ export * from "./schemas.ts";
 
 export const methods = {
   tiximWorkflows: "server.tiximWorkflows",
+  tiximWorkflowOverview: "server.tiximWorkflowOverview",
   tiximWorkflowSearch: "server.tiximWorkflowSearch",
   tiximWorkflowLink: "server.tiximWorkflowLink",
   tiximWorkflowSnooze: "server.tiximWorkflowSnooze",
@@ -16,11 +17,14 @@ export const methods = {
   serverListTiximModels: "server.listTiximModels",
 } as const;
 
-export type SubscriptionMethod = typeof methods.tiximWorkflows;
+export type SubscriptionMethod =
+  | typeof methods.tiximWorkflows
+  | typeof methods.tiximWorkflowOverview;
 export type StreamCommandMethod = typeof methods.tiximFlowRead | typeof methods.tiximFlowWrite;
 
 export const scopes = {
   [methods.tiximWorkflows]: "orchestration:read",
+  [methods.tiximWorkflowOverview]: "orchestration:read",
   [methods.tiximWorkflowSearch]: "orchestration:read",
   [methods.tiximWorkflowLink]: "orchestration:operate",
   [methods.tiximWorkflowSnooze]: "orchestration:operate",
@@ -44,6 +48,13 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
   const WstiximWorkflowsRpc = Rpc.make(methods.tiximWorkflows, {
     payload: schemas.TiximWorkflowListInput,
     success: schemas.TiximWorkflowListResult,
+    stream: true,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+
+  const WstiximWorkflowOverviewRpc = Rpc.make(methods.tiximWorkflowOverview, {
+    payload: schemas.TiximWorkflowOverviewInput,
+    success: schemas.TiximWorkflowOverview,
     stream: true,
     error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
   });
@@ -106,6 +117,7 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
 
   return [
     WstiximWorkflowsRpc,
+    WstiximWorkflowOverviewRpc,
     WstiximWorkflowSearchRpc,
     WstiximWorkflowLinkRpc,
     WstiximWorkflowSnoozeRpc,

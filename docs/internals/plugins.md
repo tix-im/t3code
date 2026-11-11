@@ -8,7 +8,8 @@ plugin. Plugins run as trusted application code, not in a security sandbox.
 
 Each host has a build-time `plugins/installed*` composition root. The web registry
 collects Markdown transforms and renderers, thread header and details sections,
-provider settings extensions, and connection setup panels. The native registry
+sidebar utilities and thread annotations, provider settings extensions, and connection
+setup panels. The native registry
 has separate React Native header and Markdown renderers. Shared environment-scoped queries and guarded commands live in
 `packages/client-runtime/plugins`; web components never become native dependencies.
 

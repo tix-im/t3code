@@ -23,6 +23,37 @@ export interface PluginMarkdownAnchorProps {
   readonly threadRef: ScopedThreadRef | undefined;
 }
 
+export interface PluginSidebarThreadItem {
+  readonly key: string;
+  readonly label: string;
+  readonly icon: ComponentType<{ className?: string }>;
+  readonly iconClassName?: string;
+}
+
+export interface PluginSidebarThread {
+  /** External work holds the thread, so it lists as working rather than snoozed or idle. */
+  readonly working: boolean;
+  /** Shown when the row has no status of its own, such as a running turn or a request. */
+  readonly status?: {
+    readonly label: string;
+    readonly icon: ComponentType<{ className?: string }>;
+  };
+  /** One line in the row's hover card. */
+  readonly summary?: {
+    readonly text: string;
+    readonly icon: ComponentType<{ className?: string }>;
+  };
+  /** What the thread waits on: an extra line on its card and items in its hover card. */
+  readonly items?: ReadonlyArray<PluginSidebarThreadItem>;
+}
+
+export interface PluginSidebarThreadActionProps {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  /** Keeps the row's hover controls visible while the action's popup is open. */
+  readonly onOpenChange: (open: boolean) => void;
+}
+
 export interface WebPlugin {
   readonly id: string;
   readonly connectionSetup?: {
@@ -44,6 +75,14 @@ export interface WebPlugin {
   readonly ThreadHeader?: ComponentType<PluginThreadProps>;
   /** Rendered in the sidebar's utility row, normally as a host `SidebarUtilityItem`. */
   readonly SidebarUtility?: ComponentType;
+  readonly sidebarThreads?: {
+    /** Called once per sidebar render. Keys are scoped thread keys; keep the map stable. */
+    readonly useThreads: (
+      environmentIds: ReadonlyArray<EnvironmentId>,
+    ) => ReadonlyMap<string, PluginSidebarThread>;
+    /** A hover-only row control beside snooze and settle, for threads in the map. */
+    readonly RowAction?: ComponentType<PluginSidebarThreadActionProps>;
+  };
   readonly threadDetails?: {
     readonly id: string;
     readonly label: string;

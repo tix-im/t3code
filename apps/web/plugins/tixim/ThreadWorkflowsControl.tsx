@@ -36,7 +36,7 @@ import {
   workflowStateGlyph,
 } from "./workflowPresentation";
 
-function DialogRunTitle({ run }: { run: TiximWorkflowRun }) {
+export function DialogRunTitle({ run }: { run: TiximWorkflowRun }) {
   const glyph = workflowStateGlyph(run.availability === "available" ? run.state : "unavailable");
   const { icon: Icon } = glyph;
   return (

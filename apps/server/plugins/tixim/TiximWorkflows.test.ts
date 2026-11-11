@@ -21,6 +21,7 @@ import {
   list,
   listConnections,
   live,
+  overview,
   link,
   search,
   rpc,
@@ -44,8 +45,8 @@ const run = (runId: string, extra: Record<string, unknown> = {}) => ({
 });
 const setup = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  yield* sql`CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY, deleted_at TEXT)`;
-  yield* sql`INSERT INTO orchestration_v2_projection_threads VALUES ('thread-a', NULL), ('thread-b', NULL)`;
+  yield* sql`CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY, deleted_at TEXT, archived_at TEXT)`;
+  yield* sql`INSERT INTO orchestration_v2_projection_threads VALUES ('thread-a', NULL, NULL), ('thread-b', NULL, NULL)`;
   yield* sql`CREATE TABLE orchestration_v2_projection_provider_threads(thread_id TEXT, payload_json TEXT)`;
   yield* Migration;
   yield* RelationshipsMigration;
@@ -133,6 +134,56 @@ describe("thread workflows", () => {
       ),
     );
   });
+  it.effect("summarizes linked runs and the runs each thread is held for", () =>
+    Effect.gen(function* () {
+      yield* setup;
+      const sql = yield* SqlClient.SqlClient;
+      yield* list("thread-a");
+      yield* list("thread-b");
+      yield* sql`UPDATE tixim_workflow_links SET last_state = 'completed' WHERE run_id = 'done'`;
+      yield* sql`UPDATE tixim_workflow_links SET last_state = 'running', payload_json = json_set(payload_json, '$.state', 'failed')
+        WHERE thread_id = 'thread-b' AND run_id = 'task'`;
+      const targets = (runIds: ReadonlyArray<string>) =>
+        encode(runIds.map((runId) => ({ daemonId: "daemon-one", runId })));
+      yield* sql`INSERT INTO tixim_workflow_snoozes VALUES ('thread-a', 'snooze', ${targets(["task", "gone"])}, 1)`;
+      yield* sql`INSERT INTO tixim_workflow_waits (thread_id, wait_id, targets_json, wake_json)
+        VALUES ('thread-a', 'wait', ${targets(["task", "done"])}, NULL),
+        ('thread-b', 'woken', ${targets(["task"])}, '{"text":"","summary":""}')`;
+      const summary = yield* overview();
+      expect(
+        summary.threads.map((thread) => ({
+          threadId: thread.threadId,
+          runs: thread.runs.map((run) => `${run.daemonId}/${run.runId}:${run.state}`).toSorted(),
+          waitingOn: thread.waitingOn.toSorted(),
+        })),
+      ).toEqual([
+        {
+          threadId: "thread-a",
+          runs: ["daemon-one/done:completed", "daemon-one/task:running"],
+          waitingOn: ["daemon-one/done", "daemon-one/task"],
+        },
+        {
+          threadId: "thread-b",
+          runs: ["daemon-one/done:completed", "daemon-one/task:failed"],
+          waitingOn: [],
+        },
+      ]);
+      yield* sql`UPDATE orchestration_v2_projection_threads SET archived_at = 'now' WHERE thread_id = 'thread-b'`;
+      expect((yield* overview()).threads.map((thread) => thread.threadId)).toEqual(["thread-a"]);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          base,
+          runner((input) =>
+            encode({
+              daemonId: input.args.includes("one") ? "daemon-one" : "daemon-two",
+              runs: input.args.includes("one") ? [run("task"), run("done")] : [],
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
   it.effect("migrates saved relationships without changing links or detach exclusions", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

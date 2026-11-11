@@ -121,6 +121,8 @@ import { Menu, MenuItem, MenuItemDetail, MenuPopup, MenuSeparator, MenuTrigger }
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
+import { PluginSidebarThreadAction, usePluginSidebarThread } from "../../plugins";
+import type { PluginSidebarThread } from "../../plugins/api";
 
 // The fields thread rows show. Provider status pushes refresh `checkedAt`,
 // status and auth on every provider; leaving those out keeps each
@@ -247,6 +249,7 @@ function SidebarThreadTooltip({
   branchMismatch,
   terminalStatus,
   terminalProcessCount,
+  pluginThread,
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -264,6 +267,7 @@ function SidebarThreadTooltip({
   } | null;
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
+  pluginThread?: PluginSidebarThread | undefined;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const previousProviderNames = thread.providerInstanceHistory
@@ -353,6 +357,18 @@ function SidebarThreadTooltip({
             </div>
           </div>
         ) : null}
+        {pluginThread?.summary ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <pluginThread.summary.icon className="size-3 shrink-0 stroke-muted-foreground" />
+            <div className="min-w-0 truncate text-foreground/75">{pluginThread.summary.text}</div>
+          </div>
+        ) : null}
+        {pluginThread?.items?.map((item) => (
+          <div key={item.key} className="flex min-w-0 items-center gap-2 pl-5">
+            <item.icon aria-hidden className={cn("size-3 shrink-0", item.iconClassName)} />
+            <div className="min-w-0 truncate text-foreground/75">{item.label}</div>
+          </div>
+        ))}
         {thread.runtime?.lastError ? (
           <div
             className={cn(
@@ -733,6 +749,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
+  const pluginThread = usePluginSidebarThread(threadKey);
   const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
   const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
   const isWoke =
@@ -808,6 +825,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         }
                       : null;
   const isWokeStatus = topStatus?.icon === "woke";
+  // External work outranks an idle row's Done, but never the thread's own activity or requests.
+  const pluginStatus =
+    topStatus === null || topStatus.icon === "done" ? pluginThread?.status : undefined;
+  const pluginItems = pluginThread?.items ?? [];
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
@@ -847,6 +868,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       branchMismatch={branchMismatch}
       terminalStatus={terminalStatus}
       terminalProcessCount={terminalProcessCount}
+      pluginThread={pluginThread}
     />
   );
 
@@ -961,7 +983,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     canOperateThread && props.snoozeSupported && canSnooze(thread, { now: snoozeGateNow });
   // Closing here, not just masking, keeps the menu from reopening when the button returns.
   if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
-  const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
+  const [pluginActionOpen, setPluginActionOpen] = useState(false);
+  const snoozeButtonOpen = snoozeMenuOpenRaw && showSnoozeButton;
+  // Either popup keeps the row controls up and its own tooltip closed.
+  const snoozeMenuOpen = snoozeButtonOpen || pluginActionOpen;
   const jumpHintLabel = snoozeMenuOpen ? null : props.jumpLabel;
   const handlePrClick = (event: ReactMouseEvent<HTMLElement>, targetUrl?: string) => {
     const url = targetUrl ?? pr?.url ?? currentLinkedPr?.url;
@@ -1426,6 +1451,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       className={cn(
         "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
         metaLineEmpty && "[contain-intrinsic-size:auto_58px]",
+        pluginItems.length > 0 && !metaLineEmpty && "[contain-intrinsic-size:auto_96px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1454,7 +1480,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           <div
             className={cn(
               "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-              metaLineEmpty && "h-auto",
+              (metaLineEmpty || pluginItems.length > 0) && "h-auto",
             )}
           >
             <div className="flex h-5 min-w-0 items-center gap-1.5">
@@ -1493,7 +1519,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
                     )}
                   >
-                    {topStatus ? (
+                    {pluginStatus ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-info-foreground">
+                        <pluginStatus.icon aria-hidden className="size-4 shrink-0" />
+                        {pluginStatus.label}
+                      </span>
+                    ) : topStatus ? (
                       isWokeStatus ? (
                         <Tooltip>
                           <TooltipTrigger
@@ -1541,7 +1572,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                     )}
                   </span>
-                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
+                  {props.settlementSupported ||
+                  showSnoozeButton ||
+                  hasUnsentDraft ||
+                  pluginThread ? (
                     <span
                       className={cn(
                         // Mouse clicks leave Settle focused; focus-within would pin controls over
@@ -1567,9 +1601,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           <TooltipPopup side="top">Discard draft</TooltipPopup>
                         </Tooltip>
                       ) : null}
+                      {pluginThread ? (
+                        <PluginSidebarThreadAction
+                          environmentId={thread.environmentId}
+                          threadId={thread.id}
+                          onOpenChange={setPluginActionOpen}
+                        />
+                      ) : null}
                       {showSnoozeButton ? (
                         <SnoozeMenuButton
-                          open={snoozeMenuOpen}
+                          open={snoozeButtonOpen}
                           onOpenChange={setSnoozeMenuOpen}
                           onSnooze={handleSnoozePreset}
                           timestampFormat={props.timestampFormat}
@@ -1612,6 +1653,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {titleLineIcons}
             </div>
             {metaLine}
+            {pluginItems.length > 0 ? (
+              <div className="mt-0.5 flex min-w-0 items-center gap-2.5 overflow-hidden text-secondary-label text-xs">
+                {pluginItems.map((item) => (
+                  <span key={item.key} className="flex min-w-0 shrink items-center gap-1">
+                    <item.icon aria-hidden className={cn("size-3 shrink-0", item.iconClassName)} />
+                    <span className="min-w-0 truncate">{item.label}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </TooltipTrigger>
         {detailsTooltip}
