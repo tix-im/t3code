@@ -393,6 +393,34 @@ const searchImpl = Effect.fn("TiximWorkflows.search")(function* <E, R>(
 });
 export const search = (input: TiximWorkflowSearchInput) => safe(searchImpl(input, readRecent));
 
+export const listConnections = Effect.fn("TiximWorkflows.listConnections")(function* () {
+  const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
+  const entries = Object.entries(settings.providerInstances).filter(
+    ([, value]) => value.driver === "tixim",
+  );
+  const connections = yield* Effect.forEach(
+    entries,
+    ([id, entry]) =>
+      readSearch(id, { limit: 1 }).pipe(
+        Effect.map((read): TiximWorkflowConnection => ({
+          id,
+          label: read.label,
+          daemonId: read.daemonId,
+          available: true,
+        })),
+        Effect.orElseSucceed((): TiximWorkflowConnection => ({
+          id,
+          label: entry.displayName ?? id,
+          daemonId: "",
+          available: false,
+          error: failure().message,
+        })),
+      ),
+    { concurrency: "unbounded" },
+  );
+  return { connections };
+}, safe);
+
 /** Filtering a short-lived page keeps search instant while someone types. */
 export const makeCachedSearch = Effect.gen(function* () {
   const context = yield* Effect.context<
@@ -570,7 +598,11 @@ const READ_METHODS = new Set([
   "GetWorkflowRunFile",
   "ListRunSnapshots",
   "GetRunReapStatus",
+  "ListWorkflows",
+  "SubscribeWorkflowListChanges",
+  "DescribeWorkflowDefinition",
 ]);
+const CATALOG_READ_METHODS = new Set(["ListCatalogEntries", "GetCatalogEntry"]);
 const WRITE_METHODS = new Set([
   "CancelWorkflow",
   "SuspendWorkflowRun",
@@ -584,11 +616,14 @@ const WRITE_METHODS = new Set([
   "AnswerWorkflowInput",
   "TopUpRunBudget",
   "MutatePlannerDag",
+  "SubmitWorkflow",
 ]);
 export function allowedFlowMethod(path: string, write: boolean) {
   const [service, method, extra] = path.split("/");
+  if (extra !== undefined) return false;
+  if (service === "tix.control.v1.CatalogControl")
+    return !write && CATALOG_READ_METHODS.has(method ?? "");
   return (
-    extra === undefined &&
     (service === "tix.control.v1.WorkflowsControl" ||
       service === "tix.control.v1.ApprovalsControl") &&
     (write ? WRITE_METHODS : READ_METHODS).has(method ?? "")
@@ -598,12 +633,14 @@ export const rpc = (input: TiximFlowRpcInput, write: boolean) =>
   Stream.unwrap(
     safe(
       Effect.gen(function* () {
-        yield* thread(input.threadId);
         if (!allowedFlowMethod(input.method, write)) return yield* failure();
-        const sql = yield* SqlClient.SqlClient;
-        const bound =
-          yield* sql`SELECT 1 FROM tixim_workflow_links WHERE thread_id = ${input.threadId} AND daemon_id = ${input.daemonId} AND excluded = 0 LIMIT 1`;
-        if (bound.length === 0) return yield* failure();
+        if (input.threadId !== undefined) {
+          yield* thread(input.threadId);
+          const sql = yield* SqlClient.SqlClient;
+          const bound =
+            yield* sql`SELECT 1 FROM tixim_workflow_links WHERE thread_id = ${input.threadId} AND daemon_id = ${input.daemonId} AND excluded = 0 LIMIT 1`;
+          if (bound.length === 0) return yield* failure();
+        }
         const selected = yield* connection(input.connectionId);
         const runner = yield* ProcessRunner.ProcessRunner;
         let buffered = 0;

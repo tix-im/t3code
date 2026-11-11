@@ -19,6 +19,7 @@ import SnoozesMigration from "./migrations/005_TiximWorkflowSnoozes.ts";
 import * as TiximWorkflows from "./TiximWorkflows.ts";
 import {
   list,
+  listConnections,
   live,
   link,
   search,
@@ -647,5 +648,61 @@ describe("thread workflows", () => {
     expect(allowedFlowMethod("tix.control.v1.WorkflowsControl/CancelWorkflow", false)).toBe(false);
     expect(allowedFlowMethod("tix.control.v1.WorkflowsControl/CancelWorkflow", true)).toBe(true);
     expect(allowedFlowMethod("tix.control.v1.SecretsControl/GetWorkflowDetail", false)).toBe(false);
+    expect(allowedFlowMethod("tix.control.v1.WorkflowsControl/SubmitWorkflow", false)).toBe(false);
+    expect(allowedFlowMethod("tix.control.v1.WorkflowsControl/SubmitWorkflow", true)).toBe(true);
+    expect(allowedFlowMethod("tix.control.v1.CatalogControl/ListCatalogEntries", false)).toBe(true);
+    expect(allowedFlowMethod("tix.control.v1.CatalogControl/ListCatalogEntries", true)).toBe(false);
+    expect(allowedFlowMethod("tix.control.v1.CatalogControl/SearchCatalog", false)).toBe(false);
   });
+  it.effect("reports each connection's daemon and keeps an unreachable one listed", () =>
+    Effect.gen(function* () {
+      const { connections } = yield* listConnections();
+      expect(connections).toEqual([
+        { id: "tix-one", label: "Tixim One", daemonId: "daemon-one", available: true },
+        {
+          id: "tix-two",
+          label: "tix-two",
+          daemonId: "",
+          available: false,
+          error: "The workflow connection is unavailable or access was denied.",
+        },
+      ]);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          base,
+          runner((input) =>
+            input.args.includes("one") ? encode({ daemonId: "daemon-one", runs: [] }) : "not json",
+          ),
+        ),
+      ),
+    ),
+  );
+  it.effect("forwards a daemon-wide request without a thread but keeps thread requests bound", () =>
+    Effect.gen(function* () {
+      yield* setup;
+      const request = {
+        connectionId: "tix-two",
+        daemonId: "unlinked-daemon",
+        method: "tix.control.v1.WorkflowsControl/ListWorkflows",
+        body: "",
+      };
+      expect(yield* rpc(request, false).pipe(Stream.runCollect)).toEqual(["YQ=="]);
+      const refused = yield* rpc({ ...request, threadId: "thread-a" }, false).pipe(
+        Stream.runCollect,
+        Effect.flip,
+      );
+      expect(refused._tag).toBe("TiximCommandError");
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          base,
+          runner((input) => {
+            input.onStdoutChunk?.(new TextEncoder().encode("YQ==\n"));
+            return "";
+          }),
+        ),
+      ),
+    ),
+  );
 });

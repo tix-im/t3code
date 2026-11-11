@@ -13,6 +13,14 @@ export function PluginThreadHeaders(props: PluginThreadProps) {
   ));
 }
 
+export function PluginSidebarUtilities() {
+  return webPlugins.sidebarUtilities.map(({ id, Component }) => (
+    <Suspense key={id} fallback={null}>
+      <Component />
+    </Suspense>
+  ));
+}
+
 export function PluginThreadDetails({
   visible,
   ...props

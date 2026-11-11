@@ -149,6 +149,10 @@ export const TiximWorkflowConnection = Schema.Struct({
   error: Schema.optional(Schema.String),
 });
 export type TiximWorkflowConnection = typeof TiximWorkflowConnection.Type;
+export const TiximConnectionsInput = Schema.Struct({});
+export const TiximConnectionsResult = Schema.Struct({
+  connections: Schema.Array(TiximWorkflowConnection),
+});
 export const TiximWorkflowListResult = Schema.Struct({
   runs: Schema.Array(TiximWorkflowRun),
   connections: Schema.Array(TiximWorkflowConnection),
@@ -207,7 +211,8 @@ export const TiximWorkflowPollResult = Schema.Struct({
   next: Schema.String,
 });
 export const TiximFlowRpcInput = Schema.Struct({
-  threadId: Schema.String,
+  /** Scopes the request to a daemon linked to this thread. Omitted by the daemon-wide console. */
+  threadId: Schema.optional(Schema.String),
   connectionId: Schema.String,
   daemonId: Schema.String,
   method: Schema.String,
@@ -217,6 +222,7 @@ export const TiximFlowRpcInput = Schema.Struct({
 export type TiximWorkflowLinkInput = typeof TiximWorkflowLinkInput.Type;
 export type TiximWorkflowSearchInput = typeof TiximWorkflowSearchInput.Type;
 export type TiximFlowRpcInput = typeof TiximFlowRpcInput.Type;
+export type TiximConnectionsInput = typeof TiximConnectionsInput.Type;
 
 export const DesktopTiximProjectSchema = Schema.Struct({
   project: Schema.String,

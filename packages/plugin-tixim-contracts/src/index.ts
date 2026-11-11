@@ -8,6 +8,7 @@ export const methods = {
   tiximWorkflowSearch: "server.tiximWorkflowSearch",
   tiximWorkflowLink: "server.tiximWorkflowLink",
   tiximWorkflowSnooze: "server.tiximWorkflowSnooze",
+  tiximConnections: "server.tiximConnections",
   tiximFlowRead: "server.tiximFlowRead",
   tiximFlowWrite: "server.tiximFlowWrite",
   serverListTiximContexts: "server.listTiximContexts",
@@ -23,6 +24,7 @@ export const scopes = {
   [methods.tiximWorkflowSearch]: "orchestration:read",
   [methods.tiximWorkflowLink]: "orchestration:operate",
   [methods.tiximWorkflowSnooze]: "orchestration:operate",
+  [methods.tiximConnections]: "orchestration:read",
   [methods.tiximFlowRead]: "orchestration:read",
   [methods.tiximFlowWrite]: "orchestration:operate",
   [methods.serverListTiximContexts]: "providers:manage",
@@ -64,6 +66,12 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
     error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
   });
 
+  const WstiximConnectionsRpc = Rpc.make(methods.tiximConnections, {
+    payload: schemas.TiximConnectionsInput,
+    success: schemas.TiximConnectionsResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+
   const WstiximFlowReadRpc = Rpc.make(methods.tiximFlowRead, {
     payload: schemas.TiximFlowRpcInput,
     success: Schema.String,
@@ -101,6 +109,7 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
     WstiximWorkflowSearchRpc,
     WstiximWorkflowLinkRpc,
     WstiximWorkflowSnoozeRpc,
+    WstiximConnectionsRpc,
     WstiximFlowReadRpc,
     WstiximFlowWriteRpc,
     WsServerListTiximContextsRpc,
