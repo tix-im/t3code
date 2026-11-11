@@ -116,7 +116,7 @@ const threadExists = Effect.fn(function* (threadId: string) {
 const thread = Effect.fn(function* (threadId: string) {
   if (!(yield* threadExists(threadId))) return yield* failure();
 });
-const connection = Effect.fn(function* (id: string) {
+export const connection = Effect.fn(function* (id: string) {
   const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
   const entry = Object.entries(settings.providerInstances).find(([key]) => key === id)?.[1];
   if (entry?.driver !== "tixim") return yield* failure();

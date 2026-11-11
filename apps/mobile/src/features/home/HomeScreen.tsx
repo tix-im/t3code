@@ -2,6 +2,7 @@ import { useContentTopInset } from "../../components/ui/useBarInset";
 import { usePaneRole } from "../../components/ui/Pane";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { useActiveNewTask } from "../../state/active-new-task";
+import { usePluginProjectGrouping } from "../../plugins";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import type { ThreadMoveDestination } from "../threads/threadOrder";
@@ -245,6 +246,9 @@ function renderHomeScrollView(props: ScrollViewProps) {
 }
 
 export function HomeScreen(props: HomeScreenProps) {
+  const linkedProjectGroups = usePluginProjectGrouping([
+    ...new Set(props.projects.map((project) => project.environmentId)),
+  ]);
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const workspace = useWorkspaceTabs();
   const [initialScrollOffset] = useState(() => workspace?.getScrollOffset("threads") ?? 0);
@@ -376,8 +380,9 @@ export function HomeScreen(props: HomeScreenProps) {
         projects,
         environmentId: selectedEnvironmentId,
         projectGroupingMode,
+        linkedProjectGroups,
       }),
-    [projects, selectedEnvironmentId, projectGroupingMode],
+    [projects, selectedEnvironmentId, projectGroupingMode, linkedProjectGroups],
   );
   const hasSearchQuery = props.searchQuery.trim().length > 0;
   const projectByKey = (() => {

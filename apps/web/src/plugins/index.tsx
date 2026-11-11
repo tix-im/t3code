@@ -5,6 +5,8 @@ import type { PluginSidebarThread, PluginSidebarThreadActionProps, PluginThreadP
 import { createWebPluginRegistry } from "./registry";
 
 export const webPlugins = createWebPluginRegistry(installedWebPlugins);
+export const usePluginProjectGrouping =
+  webPlugins.projectGrouping ?? (() => new Map<string, string>());
 
 export function PluginThreadHeaders(props: PluginThreadProps) {
   return webPlugins.headers.map(({ id, Component }) => (

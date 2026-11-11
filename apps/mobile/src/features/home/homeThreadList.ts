@@ -46,6 +46,7 @@ export function buildHomeProjectScopes(input: {
   readonly projects: ReadonlyArray<EnvironmentProject>;
   readonly environmentId: EnvironmentId | null;
   readonly projectGroupingMode: SidebarProjectGroupingMode;
+  readonly linkedProjectGroups?: ReadonlyMap<string, string>;
 }): ReadonlyArray<HomeProjectScope> {
   const projects = input.projects.filter(
     (project) => input.environmentId === null || project.environmentId === input.environmentId,
@@ -56,6 +57,7 @@ export function buildHomeProjectScopes(input: {
     settings: {
       sidebarProjectGroupingMode: input.projectGroupingMode,
       sidebarProjectGroupingOverrides: {},
+      linkedProjectGroups: input.linkedProjectGroups,
     },
   }).map((group) => {
     return {

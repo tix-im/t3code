@@ -29,5 +29,12 @@ it.effect("disabled RPCs return typed errors without acquiring database or proce
       relationship: "tracking",
     }).pipe(Effect.flip);
     expect(mutationError).toEqual(error);
+    expect(yield* handlers[WS_METHODS.tiximProjectLinks]({}).pipe(Effect.flip)).toEqual(error);
+    expect(
+      yield* handlers[WS_METHODS.tiximProjectImport]({
+        connectionId: "remote",
+        tiximProjectId: "project",
+      }).pipe(Effect.flip),
+    ).toEqual(error);
   }),
 );

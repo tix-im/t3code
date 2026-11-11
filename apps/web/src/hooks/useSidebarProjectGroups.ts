@@ -8,6 +8,7 @@ import { useEnvironmentIdentities, usePrimaryEnvironmentId } from "../state/envi
 import { useDelegatedUnderParent, useProjects, useQuietThreadShells } from "../state/entities";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
+import { usePluginProjectGrouping } from "../plugins";
 
 export function useSidebarProjectGroups() {
   const projects = useProjects();
@@ -19,6 +20,9 @@ export function useSidebarProjectGroups() {
   const sortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const groupingSettings = useClientSettings(selectProjectGroupingSettings);
   const environments = useEnvironmentIdentities();
+  const linkedProjectGroups = usePluginProjectGrouping(
+    environments.map((entry) => entry.environmentId),
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const orderedProjects = orderItemsByPreferredIds({
     items: projects,
@@ -35,7 +39,7 @@ export function useSidebarProjectGroups() {
   const unsortedGroups = buildSidebarProjectSnapshots({
     projects: sortOrder === "manual" ? orderedProjects : projects,
     groupScratchProjects: true,
-    settings: groupingSettings,
+    settings: { ...groupingSettings, linkedProjectGroups },
     primaryEnvironmentId,
     resolveEnvironmentLabel: (environmentId) => labels.get(environmentId) ?? null,
   });

@@ -153,6 +153,56 @@ export const TiximConnectionsInput = Schema.Struct({});
 export const TiximConnectionsResult = Schema.Struct({
   connections: Schema.Array(TiximWorkflowConnection),
 });
+export const TiximProjectDirectory = Schema.Struct({
+  path: Schema.String,
+  branch: Schema.NullOr(Schema.String),
+  is_primary: Schema.Boolean,
+  source: Schema.String,
+});
+export const TiximProject = Schema.Struct({
+  project_id: Schema.String,
+  name: Schema.String,
+  directory: Schema.String,
+  workspace_id: Schema.String,
+  directories: Schema.Array(TiximProjectDirectory),
+});
+export const TiximProjectLink = Schema.Struct({
+  projectId: Schema.String,
+  connectionId: Schema.String,
+  daemonUrl: Schema.String,
+  tiximProjectId: Schema.String,
+  tiximProjectName: Schema.String,
+  primaryPath: Schema.String,
+  lastError: Schema.NullOr(Schema.String),
+});
+export const TiximProjectsInput = Schema.Struct({ connectionId: Schema.String });
+export const TiximProjectLinksInput = Schema.Struct({});
+export const TiximProjectLinksResult = Schema.Struct({ links: Schema.Array(TiximProjectLink) });
+export type TiximProjectsInput = typeof TiximProjectsInput.Type;
+export const TiximProjectsResult = Schema.Struct({
+  projects: Schema.Array(TiximProject),
+  links: Schema.Array(TiximProjectLink),
+  daemonUrl: Schema.String,
+});
+export type TiximProjectsResult = typeof TiximProjectsResult.Type;
+export const TiximProjectLinkInput = Schema.Struct({
+  connectionId: Schema.String,
+  projectIds: Schema.Array(Schema.String),
+  tiximProjectId: Schema.optional(Schema.String),
+  create: Schema.optional(Schema.Boolean),
+});
+export type TiximProjectLinkInput = typeof TiximProjectLinkInput.Type;
+export const TiximProjectImportInput = Schema.Struct({
+  connectionId: Schema.String,
+  tiximProjectId: Schema.String,
+});
+export type TiximProjectImportInput = typeof TiximProjectImportInput.Type;
+export const TiximProjectUnlinkInput = Schema.Struct({
+  projectId: Schema.String,
+});
+export type TiximProjectUnlinkInput = typeof TiximProjectUnlinkInput.Type;
+export const TiximProjectSyncInput = Schema.Struct({ connectionId: Schema.String });
+export type TiximProjectSyncInput = typeof TiximProjectSyncInput.Type;
 export const TiximWorkflowListResult = Schema.Struct({
   runs: Schema.Array(TiximWorkflowRun),
   connections: Schema.Array(TiximWorkflowConnection),

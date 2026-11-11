@@ -32,6 +32,6 @@ it.effect(
       expect(pluginProviderDrivers).toEqual([]);
       expect(
         pluginMigrationTracks.map(({ table, migrations }) => [table, migrations.map(([id]) => id)]),
-      ).toEqual([["tixim_sql_migrations", [1, 2, 3, 4, 5]]]);
+      ).toEqual([["tixim_sql_migrations", [1, 2, 3, 4, 5, 6]]]);
     }),
 );

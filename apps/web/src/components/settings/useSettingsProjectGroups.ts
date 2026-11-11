@@ -2,6 +2,7 @@ import { useClientSettings } from "../../hooks/useSettings";
 import { buildSidebarProjectSnapshots } from "../../sidebarProjectGrouping";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
 import { useProjects } from "../../state/entities";
+import { usePluginProjectGrouping } from "../../plugins";
 
 export function useSettingsProjectGroups() {
   const projects = useProjects();
@@ -14,10 +15,13 @@ export function useSettingsProjectGroups() {
   );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { environments } = useEnvironments();
+  const linkedProjectGroups = usePluginProjectGrouping(
+    environments.map((entry) => entry.environmentId),
+  );
   const labels = new Map(environments.map((entry) => [entry.environmentId, entry.label]));
   return buildSidebarProjectSnapshots({
     projects,
-    settings: { sidebarProjectGroupingMode, sidebarProjectGroupingOverrides },
+    settings: { sidebarProjectGroupingMode, sidebarProjectGroupingOverrides, linkedProjectGroups },
     primaryEnvironmentId,
     resolveEnvironmentLabel: (id) => labels.get(id) ?? null,
   }).sort((a, b) => a.displayName.localeCompare(b.displayName));

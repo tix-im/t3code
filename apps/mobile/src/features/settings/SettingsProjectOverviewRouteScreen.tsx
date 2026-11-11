@@ -44,6 +44,7 @@ import { leaveSettingsPage } from "./settings-navigation";
 import { workspaceHasColumns } from "../layout/workspace/workspace-selection-store";
 import { DEFAULT_SETTINGS_PAGE } from "../layout/workspace/workspace-tab-navigation";
 import { readUnloadedThreadCount } from "../../state/olderSettledShelf";
+import { PluginProjectSettings, PluginProjectImport } from "../../plugins";
 
 export function SettingsProjectOverviewRouteScreen() {
   const environmentMenu = useSettingsEnvironmentMenu();
@@ -93,9 +94,14 @@ export function SettingsProjectOverviewRouteScreen() {
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
         {selectedProjectKey === null ? (
-          <Text className="px-2 text-base text-foreground-muted">
-            Choose a project with the filter above to manage its name, checkouts and removal.
-          </Text>
+          <>
+            <Text className="px-2 text-base text-foreground-muted">
+              Choose a project with the filter above to manage its name, checkouts and removal.
+            </Text>
+            {selectedTargets[0] ? (
+              <PluginProjectImport environmentId={selectedTargets[0].environmentId} />
+            ) : null}
+          </>
         ) : !group || members.length === 0 ? (
           <Text className="px-2 text-base text-foreground-muted">
             This project has no checkout on the selected connected environments. Change the filter
@@ -371,6 +377,13 @@ function ProjectOverviewContent(props: {
           />
         </SettingsSection>
       ) : null}
+
+      <PluginProjectSettings
+        environmentId={representative.environmentId}
+        projectIds={props.members
+          .filter((member) => member.environmentId === representative.environmentId)
+          .map((member) => member.id)}
+      />
 
       <SettingsSection title="Checkouts">
         {props.members.map((member, index) => {

@@ -3,6 +3,7 @@ export { connectionAtomRuntime } from "../connection/runtime";
 export { useAtomCommand } from "../state/use-atom-command";
 export { useEnvironmentQuery } from "../state/query";
 export { Button } from "../components/ui/button";
+export { SettingsSection, SettingsRow } from "../components/settings/settingsLayout";
 export { Dialog, DialogPopup, DialogTitle } from "../components/ui/dialog";
 export { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../components/ui/preview-card";
 export { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";

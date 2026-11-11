@@ -38,6 +38,34 @@ export function createWorkflowEnvironment<R, E>(
       tag: WS_METHODS.tiximConnections,
       staleTimeMs: 30_000,
     }),
+    tiximProjects: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+      label: "tixim:tiximProjects",
+      tag: WS_METHODS.tiximProjects,
+      staleTimeMs: 10_000,
+      refreshIntervalMs: 30_000,
+    }),
+    tiximProjectLinks: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+      label: "tixim:tiximProjectLinks",
+      tag: WS_METHODS.tiximProjectLinks,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 10_000,
+    }),
+    tiximProjectLink: createEnvironmentRpcCommand(connectionAtomRuntime, {
+      label: "tixim:tiximProjectLink",
+      tag: WS_METHODS.tiximProjectLink,
+    }),
+    tiximProjectImport: createEnvironmentRpcCommand(connectionAtomRuntime, {
+      label: "tixim:tiximProjectImport",
+      tag: WS_METHODS.tiximProjectImport,
+    }),
+    tiximProjectUnlink: createEnvironmentRpcCommand(connectionAtomRuntime, {
+      label: "tixim:tiximProjectUnlink",
+      tag: WS_METHODS.tiximProjectUnlink,
+    }),
+    tiximProjectSync: createEnvironmentRpcCommand(connectionAtomRuntime, {
+      label: "tixim:tiximProjectSync",
+      tag: WS_METHODS.tiximProjectSync,
+    }),
 
     tiximWorkflows: createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
       label: "tixim:tiximWorkflows",

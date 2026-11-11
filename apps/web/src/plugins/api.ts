@@ -56,6 +56,15 @@ export interface PluginSidebarThreadActionProps {
 
 export interface WebPlugin {
   readonly id: string;
+  /** Stable logical grouping for project records owned by this plugin. */
+  readonly useProjectGrouping?: (
+    environmentIds: ReadonlyArray<EnvironmentId>,
+  ) => ReadonlyMap<string, string>;
+  readonly ProjectSettings?: ComponentType<{
+    environmentId: EnvironmentId;
+    projectIds: readonly string[];
+  }>;
+  readonly ProjectImport?: ComponentType<{ environmentId: EnvironmentId }>;
   readonly connectionSetup?: {
     readonly id: string;
     readonly title: string;
