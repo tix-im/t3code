@@ -5,6 +5,7 @@ import {
   type TiximWorkflowSearchInput,
   type TiximWorkflowLinkInput,
   type TiximWorkflowSnoozeInput,
+  type TiximConnectionsInput,
   type TiximFlowRpcInput,
   type TiximListContextsInput,
   type TiximListModelsInput,
@@ -45,6 +46,10 @@ export const makeRpcHandlers = Effect.gen(function* () {
       Option.isSome(workflowWaits)
         ? workflowWaits.value.snooze(input)
         : Effect.fail(new TiximCommandError({ message: "Workflow snooze is unavailable." })),
+    [WS_METHODS.tiximConnections]: (_input: TiximConnectionsInput) =>
+      TiximWorkflows.listConnections().pipe(
+        Effect.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
+      ),
     [WS_METHODS.tiximFlowRead]: (input: TiximFlowRpcInput) =>
       TiximWorkflows.rpc(input, false).pipe(
         Stream.provideService(SqlClient.SqlClient, sql),
@@ -75,6 +80,7 @@ export const disabledRpcHandlers = Effect.succeed({
   [WS_METHODS.tiximWorkflowSearch]: (_input: TiximWorkflowSearchInput) => Effect.fail(error),
   [WS_METHODS.tiximWorkflowLink]: (_input: TiximWorkflowLinkInput) => Effect.fail(error),
   [WS_METHODS.tiximWorkflowSnooze]: (_input: TiximWorkflowSnoozeInput) => Effect.fail(error),
+  [WS_METHODS.tiximConnections]: (_input: TiximConnectionsInput) => Effect.fail(error),
   [WS_METHODS.tiximFlowRead]: (_input: TiximFlowRpcInput) => Stream.fail(error),
   [WS_METHODS.tiximFlowWrite]: (_input: TiximFlowRpcInput) => Stream.fail(error),
   [WS_METHODS.serverListTiximContexts]: (_input: TiximListContextsInput) => Effect.fail(error),

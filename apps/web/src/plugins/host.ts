@@ -16,6 +16,8 @@ export {
   MenuRadioGroup,
   MenuRadioItem,
 } from "../components/ui/menu";
+export { SidebarUtilityItem } from "../components/sidebar/SidebarUtilityItem";
+export { useEnvironmentProviders, useEnvironments } from "../state/environments";
 export { ThreadDetailsSection } from "../components/chat/ThreadDetailsSection";
 export { ThreadDetailsControl } from "../components/chat/ThreadDetailsControl";
 export { THREAD_DETAILS_PANEL_ICON_CLASS } from "../components/chat/threadDetailsPanelStyles";

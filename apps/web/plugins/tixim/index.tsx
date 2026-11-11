@@ -11,6 +11,10 @@ const ThreadWorkflowsControl = lazy(() =>
   import("./ThreadWorkflowsControl").then((module) => ({ default: module.ThreadWorkflowsControl })),
 );
 
+const TiximSidebarUtility = lazy(() =>
+  import("./TiximConsole").then((module) => ({ default: module.TiximSidebarUtility })),
+);
+
 const ProviderSettings = lazy(() =>
   import("./ProviderSettings").then((module) => ({ default: module.ProviderSettings })),
 );
@@ -48,6 +52,7 @@ export const tiximPlugin: WebPlugin = {
     },
   },
   ThreadHeader: ThreadWorkflowsControl,
+  SidebarUtility: TiximSidebarUtility,
   threadDetails: {
     id: "workflows",
     label: "Workflows",

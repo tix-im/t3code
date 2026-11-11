@@ -42,6 +42,8 @@ export interface WebPlugin {
     readonly Component: ComponentType<PluginProviderSettingsProps>;
   };
   readonly ThreadHeader?: ComponentType<PluginThreadProps>;
+  /** Rendered in the sidebar's utility row, normally as a host `SidebarUtilityItem`. */
+  readonly SidebarUtility?: ComponentType;
   readonly threadDetails?: {
     readonly id: string;
     readonly label: string;

@@ -35,6 +35,9 @@ export function createWebPluginRegistry(plugins: readonly WebPlugin[]) {
     headers: plugins.flatMap((plugin) =>
       plugin.ThreadHeader ? [{ id: plugin.id, Component: plugin.ThreadHeader }] : [],
     ),
+    sidebarUtilities: plugins.flatMap((plugin) =>
+      plugin.SidebarUtility ? [{ id: plugin.id, Component: plugin.SidebarUtility }] : [],
+    ),
     threadDetails: plugins.flatMap((plugin) =>
       plugin.threadDetails ? [plugin.threadDetails] : [],
     ),

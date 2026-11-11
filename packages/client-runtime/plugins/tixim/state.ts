@@ -33,6 +33,11 @@ export function createWorkflowEnvironment<R, E>(
       tag: WS_METHODS.serverListTiximHarnesses,
       staleTimeMs: 30_000,
     }),
+    tiximConnections: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+      label: "tixim:tiximConnections",
+      tag: WS_METHODS.tiximConnections,
+      staleTimeMs: 30_000,
+    }),
 
     tiximWorkflows: createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
       label: "tixim:tiximWorkflows",
