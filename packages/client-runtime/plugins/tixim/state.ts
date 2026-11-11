@@ -43,6 +43,10 @@ export function createWorkflowEnvironment<R, E>(
       label: "tixim:tiximWorkflows",
       tag: WS_METHODS.tiximWorkflows,
     }),
+    tiximWorkflowOverview: createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
+      label: "tixim:tiximWorkflowOverview",
+      tag: WS_METHODS.tiximWorkflowOverview,
+    }),
     tiximWorkflowSearch: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
       label: "tixim:tiximWorkflowSearch",
       tag: WS_METHODS.tiximWorkflowSearch,

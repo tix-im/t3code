@@ -1,7 +1,9 @@
 import {
   TiximCommandError,
   TiximWorkflowListResult,
+  TiximWorkflowOverview,
   TiximWorkflowRun,
+  type TiximThreadWorkflows,
   TiximWorkflowRunDetails,
   type TiximWorkflowConnection,
   type TiximWorkflowRelationship,
@@ -571,6 +573,61 @@ export const live = (threadId: string) =>
     ),
     Stream.fromEffectSchedule(safe(list(threadId)), Schedule.spaced("5 seconds")),
   ).pipe(Stream.changesWith((a, b) => encodeList(a) === encodeList(b)));
+
+const encodeOverview = Schema.encodeSync(Schema.fromJsonString(TiximWorkflowOverview));
+
+/** Every thread with linked runs, from saved state only, so it never reaches a daemon. */
+export const overview = Effect.fn("TiximWorkflows.overview")(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  // The wait sweep keeps `last_state` current for tracked runs; payloads refresh only on open.
+  // A finished payload is final, while `last_state` goes stale for runs the sweep skips.
+  const links = yield* sql<{
+    thread_id: string;
+    payload_json: string;
+    last_state: string | null;
+  }>`SELECT links.thread_id, links.payload_json, links.last_state FROM tixim_workflow_links links
+    JOIN orchestration_v2_projection_threads thread ON thread.thread_id = links.thread_id
+    WHERE links.excluded = 0 AND thread.deleted_at IS NULL AND thread.archived_at IS NULL
+    ORDER BY links.thread_id`;
+  const holds = yield* sql<{ thread_id: string; daemon_id: string; run_id: string }>`
+    SELECT holds.thread_id, json_extract(target.value, '$.daemonId') AS daemon_id,
+      json_extract(target.value, '$.runId') AS run_id
+    FROM (SELECT thread_id, targets_json FROM tixim_workflow_snoozes
+      UNION ALL SELECT thread_id, targets_json FROM tixim_workflow_waits WHERE wake_json IS NULL) holds,
+      json_each(holds.targets_json) target`;
+  const threads = new Map<string, { runs: TiximWorkflowRun[]; waitingOn: string[] }>();
+  for (const row of links) {
+    const run = decodeRun(row.payload_json);
+    const entry = threads.get(row.thread_id) ?? { runs: [], waitingOn: [] };
+    entry.runs.push(
+      row.last_state === null || FINISHED_STATES.has(run.state)
+        ? run
+        : { ...run, state: row.last_state },
+    );
+    threads.set(row.thread_id, entry);
+  }
+  for (const hold of holds) {
+    const entry = threads.get(hold.thread_id);
+    const key = `${hold.daemon_id}/${hold.run_id}`;
+    // A detached target wakes its hold on the next sweep, so it is not waited on.
+    if (
+      entry?.runs.some((run) => run.daemonId === hold.daemon_id && run.runId === hold.run_id) &&
+      !entry.waitingOn.includes(key)
+    )
+      entry.waitingOn.push(key);
+  }
+  return {
+    threads: Array.from(threads, ([threadId, entry]): TiximThreadWorkflows => ({
+      threadId,
+      ...entry,
+    })),
+  };
+});
+
+export const liveOverview = () =>
+  Stream.fromEffectSchedule(safe(overview()), Schedule.spaced("5 seconds")).pipe(
+    Stream.changesWith((a, b) => encodeOverview(a) === encodeOverview(b)),
+  );
 
 const READ_METHODS = new Set([
   "SubscribeWorkflowEvents",

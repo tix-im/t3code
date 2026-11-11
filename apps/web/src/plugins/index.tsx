@@ -1,6 +1,7 @@
-import { Suspense } from "react";
+import type { EnvironmentId } from "@t3tools/contracts";
+import { createContext, Suspense, useContext } from "react";
 import { installedWebPlugins } from "../../plugins/installed";
-import type { PluginThreadProps } from "./api";
+import type { PluginSidebarThread, PluginSidebarThreadActionProps, PluginThreadProps } from "./api";
 import { createWebPluginRegistry } from "./registry";
 
 export const webPlugins = createWebPluginRegistry(installedWebPlugins);
@@ -34,4 +35,27 @@ export function PluginThreadDetails({
       </Suspense>
     ) : null,
   );
+}
+
+const NO_SIDEBAR_THREADS: ReadonlyMap<string, PluginSidebarThread> = new Map();
+const noSidebarThreads = () => NO_SIDEBAR_THREADS;
+// The registry is fixed at build time, so the chosen hook never changes between renders.
+export const usePluginSidebarThreads: (
+  environmentIds: ReadonlyArray<EnvironmentId>,
+) => ReadonlyMap<string, PluginSidebarThread> =
+  webPlugins.sidebarThreads?.useThreads ?? noSidebarThreads;
+
+const PluginSidebarThreadsContext = createContext(NO_SIDEBAR_THREADS);
+export const PluginSidebarThreadsProvider = PluginSidebarThreadsContext.Provider;
+export function usePluginSidebarThread(threadKey: string): PluginSidebarThread | undefined {
+  return useContext(PluginSidebarThreadsContext).get(threadKey);
+}
+
+export function PluginSidebarThreadAction(props: PluginSidebarThreadActionProps) {
+  const RowAction = webPlugins.sidebarThreads?.RowAction;
+  return RowAction ? (
+    <Suspense fallback={null}>
+      <RowAction {...props} />
+    </Suspense>
+  ) : null;
 }

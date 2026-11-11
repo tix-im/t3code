@@ -159,6 +159,19 @@ export const TiximWorkflowListResult = Schema.Struct({
   /** The thread is snoozed until its attached workflows settle. */
   snoozed: Schema.optional(Schema.Boolean),
 });
+export const TiximWorkflowOverviewInput = Schema.Struct({});
+export type TiximWorkflowOverviewInput = typeof TiximWorkflowOverviewInput.Type;
+export const TiximThreadWorkflows = Schema.Struct({
+  threadId: Schema.String,
+  /** Saved snapshots, not live reads, so states can lag the daemon by one wait sweep. */
+  runs: Schema.Array(TiximWorkflowRun),
+  /** `daemonId/runId` of runs a workflow snooze or an agent's workflow wait holds the thread for. */
+  waitingOn: Schema.Array(Schema.String),
+});
+export type TiximThreadWorkflows = typeof TiximThreadWorkflows.Type;
+export const TiximWorkflowOverview = Schema.Struct({
+  threads: Schema.Array(TiximThreadWorkflows),
+});
 export const TiximWorkflowSearchInput = Schema.Struct({
   threadId: Schema.String,
   connectionId: Schema.String,

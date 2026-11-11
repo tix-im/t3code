@@ -2,6 +2,7 @@ import {
   WS_METHODS,
   TiximCommandError,
   type TiximWorkflowListInput,
+  type TiximWorkflowOverviewInput,
   type TiximWorkflowSearchInput,
   type TiximWorkflowLinkInput,
   type TiximWorkflowSnoozeInput,
@@ -36,6 +37,8 @@ export const makeRpcHandlers = Effect.gen(function* () {
         Stream.provideService(SqlClient.SqlClient, sql),
         Stream.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
       ),
+    [WS_METHODS.tiximWorkflowOverview]: (_input: TiximWorkflowOverviewInput) =>
+      TiximWorkflows.liveOverview().pipe(Stream.provideService(SqlClient.SqlClient, sql)),
     [WS_METHODS.tiximWorkflowSearch]: (input: TiximWorkflowSearchInput) => searchWorkflows(input),
     [WS_METHODS.tiximWorkflowLink]: (input: TiximWorkflowLinkInput) =>
       TiximWorkflows.link(input).pipe(
@@ -77,6 +80,7 @@ export const makeRpcHandlers = Effect.gen(function* () {
 const error = new TiximCommandError({ message: "The Tixim plugin is disabled." });
 export const disabledRpcHandlers = Effect.succeed({
   [WS_METHODS.tiximWorkflows]: (_input: typeof TiximWorkflowListInput.Type) => Stream.fail(error),
+  [WS_METHODS.tiximWorkflowOverview]: (_input: TiximWorkflowOverviewInput) => Stream.fail(error),
   [WS_METHODS.tiximWorkflowSearch]: (_input: TiximWorkflowSearchInput) => Effect.fail(error),
   [WS_METHODS.tiximWorkflowLink]: (_input: TiximWorkflowLinkInput) => Effect.fail(error),
   [WS_METHODS.tiximWorkflowSnooze]: (_input: TiximWorkflowSnoozeInput) => Effect.fail(error),

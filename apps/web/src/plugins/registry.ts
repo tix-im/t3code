@@ -18,6 +18,8 @@ export function createWebPluginRegistry(plugins: readonly WebPlugin[]) {
         throw new Error(`Duplicate provider settings: ${plugin.providerSettings.driverKind}`);
       providerIds.add(plugin.providerSettings.driverKind);
     }
+    if (plugin.sidebarThreads && plugins.some((other) => other !== plugin && other.sidebarThreads))
+      throw new Error(`Only one plugin may annotate sidebar threads: ${plugin.id}`);
     if (plugin.threadDetails) {
       if (sectionIds.has(plugin.threadDetails.id))
         throw new Error(`Duplicate plugin section: ${plugin.threadDetails.id}`);
@@ -38,6 +40,7 @@ export function createWebPluginRegistry(plugins: readonly WebPlugin[]) {
     sidebarUtilities: plugins.flatMap((plugin) =>
       plugin.SidebarUtility ? [{ id: plugin.id, Component: plugin.SidebarUtility }] : [],
     ),
+    sidebarThreads: plugins.find((plugin) => plugin.sidebarThreads)?.sidebarThreads,
     threadDetails: plugins.flatMap((plugin) =>
       plugin.threadDetails ? [plugin.threadDetails] : [],
     ),
