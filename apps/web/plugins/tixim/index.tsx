@@ -3,6 +3,7 @@ import type { WebPlugin } from "../../src/plugins/api";
 import { lazy, Suspense } from "react";
 import { rehypeWorkflowReferences } from "./markdownWorkflowReferences";
 import { useSidebarWorkflowThreads } from "./sidebarThreads";
+import { useTiximProjectGrouping } from "./projectGrouping";
 const MarkdownWorkflowReference = lazy(() =>
   import("./MarkdownWorkflowReference").then((module) => ({
     default: module.MarkdownWorkflowReference,
@@ -27,7 +28,16 @@ const ProviderSettings = lazy(() =>
 const ConnectionSetup = lazy(() =>
   import("./ConnectionSetup").then((module) => ({ default: module.ConnectionSetup })),
 );
+const ProjectSettings = lazy(() =>
+  import("./ProjectIntegration").then((module) => ({ default: module.ProjectSettings })),
+);
+const ProjectImport = lazy(() =>
+  import("./ProjectIntegration").then((module) => ({ default: module.ProjectImport })),
+);
 export const tiximPlugin: WebPlugin = {
+  useProjectGrouping: useTiximProjectGrouping,
+  ProjectSettings,
+  ProjectImport,
   connectionSetup: {
     id: "tixim",
     title: "Tixim",

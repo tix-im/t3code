@@ -7,12 +7,38 @@ for (const plugin of installedPlugins) {
   if (ids.has(plugin.id)) throw new Error(`Duplicate native plugin: ${plugin.id}`);
   ids.add(plugin.id);
 }
+export const usePluginProjectGrouping =
+  installedPlugins.find((plugin) => plugin.useProjectGrouping)?.useProjectGrouping ??
+  (() => new Map<string, string>());
 
 export function PluginThreadHeader(props: PluginThreadProps) {
   return installedPlugins.map(({ id, ThreadHeader }) =>
     ThreadHeader ? (
       <Suspense key={id} fallback={null}>
         <ThreadHeader {...props} />
+      </Suspense>
+    ) : null,
+  );
+}
+export function PluginProjectSettings(props: {
+  environmentId: import("@t3tools/contracts").EnvironmentId;
+  projectIds: readonly string[];
+}) {
+  return installedPlugins.map(({ id, ProjectSettings }) =>
+    ProjectSettings ? (
+      <Suspense key={id} fallback={null}>
+        <ProjectSettings {...props} />
+      </Suspense>
+    ) : null,
+  );
+}
+export function PluginProjectImport(props: {
+  environmentId: import("@t3tools/contracts").EnvironmentId;
+}) {
+  return installedPlugins.map(({ id, ProjectImport }) =>
+    ProjectImport ? (
+      <Suspense key={id} fallback={null}>
+        <ProjectImport {...props} />
       </Suspense>
     ) : null,
   );

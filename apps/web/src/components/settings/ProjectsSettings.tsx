@@ -7,8 +7,11 @@ import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingsScopeNotice } from "./SettingsScopeNotice";
 import { SettingsPageContainer } from "./settingsLayout";
 import { ALL_ENVIRONMENTS_VALUE, selectEnvironmentAxis } from "./settingsScopeAxis";
+import { webPlugins } from "../../plugins";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 
 export function ProjectsSettings() {
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { search: value, scope, selectScope } = useSettingsScope();
   const unavailable =
     scope.kind === "unavailable" ? (
@@ -46,9 +49,20 @@ export function ProjectsSettings() {
       ) : unavailable ? (
         unavailable
       ) : (
-        <SettingsScopeNotice target="project">
-          Choose a project to manage its name, icon, checkouts and actions.
-        </SettingsScopeNotice>
+        <>
+          <SettingsScopeNotice target="project">
+            Choose a project to manage its name, icon, checkouts and actions.
+          </SettingsScopeNotice>
+          {(value.machine ? EnvironmentId.make(value.machine) : primaryEnvironmentId) &&
+            webPlugins.projectImport.map(({ id, Component }) => (
+              <Component
+                key={id}
+                environmentId={
+                  (value.machine ? EnvironmentId.make(value.machine) : primaryEnvironmentId)!
+                }
+              />
+            ))}
+        </>
       )}
     </div>
   );

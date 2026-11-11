@@ -5,6 +5,7 @@ import {
   pickableProjectGroups,
   resolveScratchProjectScopeKey,
 } from "@t3tools/client-runtime/state/project-grouping";
+import { usePluginProjectGrouping } from "../../plugins";
 import {
   useAppearancePreferences,
   useAndroidFloatingTabs,
@@ -122,6 +123,9 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   const insets = useSafeAreaInsets();
   const { fabClearance, fabSize } = useAndroidControlSizing();
   const projects = useProjects();
+  const linkedProjectGroups = usePluginProjectGrouping([
+    ...new Set(projects.map((project) => project.environmentId)),
+  ]);
   const threads = useAtomValue(steadyNavigationThreadShellsAtom);
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
@@ -177,6 +181,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   const resolvedProjectKey = resolveScratchProjectScopeKey(options.selectedProjectKey, projects, {
     sidebarProjectGroupingMode: options.projectGroupingMode,
     sidebarProjectGroupingOverrides: {},
+    linkedProjectGroups,
   });
   const projectScopes = useMemo(
     () =>
@@ -184,8 +189,9 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
         projects,
         environmentId: options.selectedEnvironmentId,
         projectGroupingMode: options.projectGroupingMode,
+        linkedProjectGroups,
       }),
-    [projects, options.selectedEnvironmentId, options.projectGroupingMode],
+    [projects, options.selectedEnvironmentId, options.projectGroupingMode, linkedProjectGroups],
   );
   const projectFilterOptions = pickableProjectGroups(projectScopes).map((scope) => ({
     key: scope.key,

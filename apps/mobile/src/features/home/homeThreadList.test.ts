@@ -45,6 +45,38 @@ function makeThread(
 }
 
 describe("home project scopes", () => {
+  it("shows Tixim linked checkouts from different repositories as one scope", () => {
+    const environmentId = EnvironmentId.make("local");
+    const projects = ["one", "two"].map((name) =>
+      makeProject({
+        environmentId,
+        id: ProjectId.make(name),
+        title: name,
+        repositoryIdentity: {
+          canonicalKey: `example.test/${name}`,
+          locator: {
+            source: "git-remote",
+            remoteName: "origin",
+            remoteUrl: `https://example.test/${name}.git`,
+          },
+        },
+      }),
+    );
+    const linkedProjectGroups = new Map(
+      projects.map((project) => [`${environmentId}\0${project.id}`, "tixim:http://daemon:linked"]),
+    );
+    const scopes = buildHomeProjectScopes({
+      projects,
+      environmentId,
+      projectGroupingMode: "repository",
+      linkedProjectGroups,
+    });
+    expect(scopes).toHaveLength(1);
+    expect(scopes[0]?.projectRefs).toEqual(
+      projects.map((project) => ({ environmentId, projectId: project.id })),
+    );
+  });
+
   it("filters threads across both scratch hosts while retaining the selected environment boundary", () => {
     const localEnvironmentId = EnvironmentId.make("local");
     const remoteEnvironmentId = EnvironmentId.make("remote");

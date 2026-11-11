@@ -10,6 +10,12 @@ export const methods = {
   tiximWorkflowLink: "server.tiximWorkflowLink",
   tiximWorkflowSnooze: "server.tiximWorkflowSnooze",
   tiximConnections: "server.tiximConnections",
+  tiximProjects: "server.tiximProjects",
+  tiximProjectLinks: "server.tiximProjectLinks",
+  tiximProjectLink: "server.tiximProjectLink",
+  tiximProjectImport: "server.tiximProjectImport",
+  tiximProjectUnlink: "server.tiximProjectUnlink",
+  tiximProjectSync: "server.tiximProjectSync",
   tiximFlowRead: "server.tiximFlowRead",
   tiximFlowWrite: "server.tiximFlowWrite",
   serverListTiximContexts: "server.listTiximContexts",
@@ -29,6 +35,12 @@ export const scopes = {
   [methods.tiximWorkflowLink]: "orchestration:operate",
   [methods.tiximWorkflowSnooze]: "orchestration:operate",
   [methods.tiximConnections]: "orchestration:read",
+  [methods.tiximProjects]: "orchestration:read",
+  [methods.tiximProjectLinks]: "orchestration:read",
+  [methods.tiximProjectLink]: "orchestration:operate",
+  [methods.tiximProjectImport]: "orchestration:operate",
+  [methods.tiximProjectUnlink]: "orchestration:operate",
+  [methods.tiximProjectSync]: "orchestration:operate",
   [methods.tiximFlowRead]: "orchestration:read",
   [methods.tiximFlowWrite]: "orchestration:operate",
   [methods.serverListTiximContexts]: "providers:manage",
@@ -36,6 +48,10 @@ export const scopes = {
   [methods.serverListTiximModels]: "providers:manage",
 } as const;
 export const clientScopes = {
+  [methods.tiximProjectLink]: scopes[methods.tiximProjectLink],
+  [methods.tiximProjectImport]: scopes[methods.tiximProjectImport],
+  [methods.tiximProjectUnlink]: scopes[methods.tiximProjectUnlink],
+  [methods.tiximProjectSync]: scopes[methods.tiximProjectSync],
   [methods.tiximWorkflowLink]: scopes[methods.tiximWorkflowLink],
   [methods.tiximWorkflowSnooze]: scopes[methods.tiximWorkflowSnooze],
   [methods.tiximFlowWrite]: scopes[methods.tiximFlowWrite],
@@ -82,6 +98,36 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
     success: schemas.TiximConnectionsResult,
     error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
   });
+  const WstiximProjectsRpc = Rpc.make(methods.tiximProjects, {
+    payload: schemas.TiximProjectsInput,
+    success: schemas.TiximProjectsResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+  const WstiximProjectLinksRpc = Rpc.make(methods.tiximProjectLinks, {
+    payload: schemas.TiximProjectLinksInput,
+    success: schemas.TiximProjectLinksResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+  const WstiximProjectLinkRpc = Rpc.make(methods.tiximProjectLink, {
+    payload: schemas.TiximProjectLinkInput,
+    success: schemas.TiximProjectsResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+  const WstiximProjectImportRpc = Rpc.make(methods.tiximProjectImport, {
+    payload: schemas.TiximProjectImportInput,
+    success: schemas.TiximProjectsResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+  const WstiximProjectUnlinkRpc = Rpc.make(methods.tiximProjectUnlink, {
+    payload: schemas.TiximProjectUnlinkInput,
+    success: schemas.TiximProjectsResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+  const WstiximProjectSyncRpc = Rpc.make(methods.tiximProjectSync, {
+    payload: schemas.TiximProjectSyncInput,
+    success: schemas.TiximProjectsResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
 
   const WstiximFlowReadRpc = Rpc.make(methods.tiximFlowRead, {
     payload: schemas.TiximFlowRpcInput,
@@ -122,6 +168,12 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
     WstiximWorkflowLinkRpc,
     WstiximWorkflowSnoozeRpc,
     WstiximConnectionsRpc,
+    WstiximProjectsRpc,
+    WstiximProjectLinksRpc,
+    WstiximProjectLinkRpc,
+    WstiximProjectImportRpc,
+    WstiximProjectUnlinkRpc,
+    WstiximProjectSyncRpc,
     WstiximFlowReadRpc,
     WstiximFlowWriteRpc,
     WsServerListTiximContextsRpc,

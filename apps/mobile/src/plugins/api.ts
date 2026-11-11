@@ -10,6 +10,14 @@ export interface NativePlugin {
   readonly id: string;
   readonly Markdown?: ComponentType<PluginMarkdownProps>;
   readonly ThreadHeader?: ComponentType<PluginThreadProps>;
+  readonly ProjectSettings?: ComponentType<{
+    environmentId: EnvironmentId;
+    projectIds: readonly string[];
+  }>;
+  readonly ProjectImport?: ComponentType<{ environmentId: EnvironmentId }>;
+  readonly useProjectGrouping?: (
+    environmentIds: ReadonlyArray<EnvironmentId>,
+  ) => ReadonlyMap<string, string>;
 }
 
 export interface PluginMarkdownProps extends PluginThreadProps {

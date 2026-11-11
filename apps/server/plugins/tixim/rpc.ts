@@ -11,8 +11,16 @@ import {
   type TiximListContextsInput,
   type TiximListModelsInput,
   type TiximListHarnessesInput,
+  type TiximProjectsInput,
+  type TiximProjectLinkInput,
+  type TiximProjectImportInput,
+  type TiximProjectUnlinkInput,
+  type TiximProjectSyncInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as FileSystem from "effect/FileSystem";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -21,11 +29,31 @@ import { ProcessRunner } from "../../src/plugins/host.ts";
 import * as TiximWorkflows from "./TiximWorkflows.ts";
 import * as TiximWorkflowWaits from "./TiximWorkflowWaits.ts";
 import * as TiximCatalog from "./tiximCatalog.ts";
+import * as TiximProjects from "./TiximProjects.ts";
+import { ProjectService, ServerSettings } from "../../src/plugins/host.ts";
+const isTiximCommandError = Schema.is(TiximCommandError);
 
 export const makeRpcHandlers = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const tiximProcessRunner = yield* ProcessRunner.make();
   const tiximEnvironment = yield* HostProcess.Environment;
+  const projectService = yield* ProjectService.ProjectService;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const random = yield* SecureRandom.SecureRandom;
+  const settings = yield* ServerSettings.ServerSettingsService;
+  const projectRpc = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.provideService(SqlClient.SqlClient, sql),
+      Effect.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
+      Effect.provideService(ProjectService.ProjectService, projectService),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(SecureRandom.SecureRandom, random),
+      Effect.provideService(ServerSettings.ServerSettingsService, settings),
+      Effect.provideService(HostProcess.Environment, tiximEnvironment),
+      Effect.mapError((error) =>
+        isTiximCommandError(error) ? error : new TiximCommandError({ message: String(error) }),
+      ),
+    );
   const workflowWaits = yield* Effect.serviceOption(TiximWorkflowWaits.WorkflowWaits);
   const searchWorkflows = yield* TiximWorkflows.makeCachedSearch.pipe(
     Effect.provideService(SqlClient.SqlClient, sql),
@@ -53,6 +81,18 @@ export const makeRpcHandlers = Effect.gen(function* () {
       TiximWorkflows.listConnections().pipe(
         Effect.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
       ),
+    [WS_METHODS.tiximProjects]: (input: TiximProjectsInput) =>
+      projectRpc(TiximProjects.list(input.connectionId)),
+    [WS_METHODS.tiximProjectLinks]: (_input: Record<string, never>) =>
+      projectRpc(TiximProjects.listLinks()),
+    [WS_METHODS.tiximProjectLink]: (input: TiximProjectLinkInput) =>
+      projectRpc(TiximProjects.link(input)),
+    [WS_METHODS.tiximProjectImport]: (input: TiximProjectImportInput) =>
+      projectRpc(TiximProjects.importProject(input)),
+    [WS_METHODS.tiximProjectUnlink]: (input: TiximProjectUnlinkInput) =>
+      projectRpc(TiximProjects.unlink(input)),
+    [WS_METHODS.tiximProjectSync]: (input: TiximProjectSyncInput) =>
+      projectRpc(TiximProjects.sync(input.connectionId)),
     [WS_METHODS.tiximFlowRead]: (input: TiximFlowRpcInput) =>
       TiximWorkflows.rpc(input, false).pipe(
         Stream.provideService(SqlClient.SqlClient, sql),
@@ -85,6 +125,12 @@ export const disabledRpcHandlers = Effect.succeed({
   [WS_METHODS.tiximWorkflowLink]: (_input: TiximWorkflowLinkInput) => Effect.fail(error),
   [WS_METHODS.tiximWorkflowSnooze]: (_input: TiximWorkflowSnoozeInput) => Effect.fail(error),
   [WS_METHODS.tiximConnections]: (_input: TiximConnectionsInput) => Effect.fail(error),
+  [WS_METHODS.tiximProjects]: (_input: TiximProjectsInput) => Effect.fail(error),
+  [WS_METHODS.tiximProjectLinks]: (_input: Record<string, never>) => Effect.fail(error),
+  [WS_METHODS.tiximProjectLink]: (_input: TiximProjectLinkInput) => Effect.fail(error),
+  [WS_METHODS.tiximProjectImport]: (_input: TiximProjectImportInput) => Effect.fail(error),
+  [WS_METHODS.tiximProjectUnlink]: (_input: TiximProjectUnlinkInput) => Effect.fail(error),
+  [WS_METHODS.tiximProjectSync]: (_input: TiximProjectSyncInput) => Effect.fail(error),
   [WS_METHODS.tiximFlowRead]: (_input: TiximFlowRpcInput) => Stream.fail(error),
   [WS_METHODS.tiximFlowWrite]: (_input: TiximFlowRpcInput) => Stream.fail(error),
   [WS_METHODS.serverListTiximContexts]: (_input: TiximListContextsInput) => Effect.fail(error),

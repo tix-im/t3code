@@ -121,6 +121,20 @@ function settings(
 }
 
 describe("buildProjectGroups", () => {
+  it("groups explicitly linked checkouts across unrelated repositories", () => {
+    const first = makeProject("first", "/repo-one");
+    const second = makeProject("second", "/repo-two", { repositoryIdentity: null });
+    const linkedProjectGroups = new Map([
+      [`${environmentId}\0${first.id}`, "tixim:daemon:project"],
+      [`${environmentId}\0${second.id}`, "tixim:daemon:project"],
+    ]);
+    const groups = buildProjectGroups({
+      projects: [first, second],
+      settings: { ...settings("separate"), linkedProjectGroups },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.members.map((member) => member.project.id)).toEqual([first.id, second.id]);
+  });
   it.each(["repository", "repository_path", "separate"] as const)(
     "keeps scratch project ownership separate by default in %s mode",
     (mode) => {

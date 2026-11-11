@@ -41,6 +41,13 @@ export function createWebPluginRegistry(plugins: readonly WebPlugin[]) {
       plugin.SidebarUtility ? [{ id: plugin.id, Component: plugin.SidebarUtility }] : [],
     ),
     sidebarThreads: plugins.find((plugin) => plugin.sidebarThreads)?.sidebarThreads,
+    projectGrouping: plugins.find((plugin) => plugin.useProjectGrouping)?.useProjectGrouping,
+    projectSettings: plugins.flatMap((plugin) =>
+      plugin.ProjectSettings ? [{ id: plugin.id, Component: plugin.ProjectSettings }] : [],
+    ),
+    projectImport: plugins.flatMap((plugin) =>
+      plugin.ProjectImport ? [{ id: plugin.id, Component: plugin.ProjectImport }] : [],
+    ),
     threadDetails: plugins.flatMap((plugin) =>
       plugin.threadDetails ? [plugin.threadDetails] : [],
     ),
