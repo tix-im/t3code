@@ -448,6 +448,19 @@ describe("AcpRegistryAdapterV2", () => {
     assert.include(rejected.message, "Request rejected.");
     assert.notInclude(rejected.message, "private-key");
     assert.notInclude(rejected.message, "token=secret");
+    const internal = (data?: unknown) =>
+      acpRegistryPromptFailure(
+        "any-agent",
+        new EffectAcpErrors.AcpRequestError({
+          code: -32603,
+          errorMessage: "Internal error",
+          ...(data === undefined ? {} : { data }),
+        }),
+      ).message;
+    assert.equal(internal("preset has no entries"), "preset has no entries");
+    assert.equal(internal({ trace: "object" }), "Internal error");
+    assert.equal(internal("   "), "Internal error");
+    assert.notInclude(internal("failed: api_key=private-key"), "private-key");
   });
 
   describe("the agent's own pickers", () => {

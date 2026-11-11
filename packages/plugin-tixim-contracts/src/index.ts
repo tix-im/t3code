@@ -8,6 +8,7 @@ export const methods = {
   tiximWorkflowOverview: "server.tiximWorkflowOverview",
   tiximWorkflowSearch: "server.tiximWorkflowSearch",
   tiximWorkflowLink: "server.tiximWorkflowLink",
+  tiximWorkflowLog: "server.tiximWorkflowLog",
   tiximWorkflowSnooze: "server.tiximWorkflowSnooze",
   tiximConnections: "server.tiximConnections",
   tiximProjects: "server.tiximProjects",
@@ -25,6 +26,7 @@ export const methods = {
 
 export type SubscriptionMethod =
   | typeof methods.tiximWorkflows
+  | typeof methods.tiximWorkflowLog
   | typeof methods.tiximWorkflowOverview;
 export type StreamCommandMethod = typeof methods.tiximFlowRead | typeof methods.tiximFlowWrite;
 
@@ -33,6 +35,7 @@ export const scopes = {
   [methods.tiximWorkflowOverview]: "orchestration:read",
   [methods.tiximWorkflowSearch]: "orchestration:read",
   [methods.tiximWorkflowLink]: "orchestration:operate",
+  [methods.tiximWorkflowLog]: "orchestration:read",
   [methods.tiximWorkflowSnooze]: "orchestration:operate",
   [methods.tiximConnections]: "orchestration:read",
   [methods.tiximProjects]: "orchestration:read",
@@ -84,6 +87,13 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
   const WstiximWorkflowLinkRpc = Rpc.make(methods.tiximWorkflowLink, {
     payload: schemas.TiximWorkflowLinkInput,
     success: schemas.TiximWorkflowListResult,
+    error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
+  });
+
+  const WstiximWorkflowLogRpc = Rpc.make(methods.tiximWorkflowLog, {
+    payload: schemas.TiximWorkflowLogInput,
+    success: schemas.TiximWorkflowLogResult,
+    stream: true,
     error: Schema.Union([schemas.TiximCommandError, EnvironmentAuthorizationError]),
   });
 
@@ -166,6 +176,7 @@ export function rpcDefinitions<Auth extends Schema.Top>(EnvironmentAuthorization
     WstiximWorkflowOverviewRpc,
     WstiximWorkflowSearchRpc,
     WstiximWorkflowLinkRpc,
+    WstiximWorkflowLogRpc,
     WstiximWorkflowSnoozeRpc,
     WstiximConnectionsRpc,
     WstiximProjectsRpc,

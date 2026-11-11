@@ -126,6 +126,14 @@ export function workflowStepCounts(
   ]);
 }
 
+/** Null for a single step: all-or-nothing is not progress. */
+export function workflowStepProgress(steps: TiximWorkflowRun["steps"]) {
+  if (steps === undefined) return null;
+  const done = steps.succeeded + steps.failed + steps.skipped;
+  const total = done + steps.running + steps.waiting;
+  return total > 1 ? { done, total, failed: steps.failed > 0 } : null;
+}
+
 export function workflowReportCounts(reports: TiximWorkflowRun["reports"]): WorkflowCount[] {
   if (reports === undefined) return [];
   return present([

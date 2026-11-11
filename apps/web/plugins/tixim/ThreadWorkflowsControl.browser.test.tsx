@@ -10,7 +10,10 @@ import { page, userEvent } from "vite-plus/test/browser";
 import "~/index.css";
 import { render as renderUi } from "../../test/render";
 
-type Query = { kind: "list" } | { kind: "search"; input: TiximWorkflowSearchInput };
+type Query =
+  | { kind: "list" }
+  | { kind: "search"; input: TiximWorkflowSearchInput }
+  | { kind: "log" };
 const state = vi.hoisted(() => ({
   runs: [] as TiximWorkflowRun[],
   candidates: [] as TiximWorkflowRun[],
@@ -27,6 +30,7 @@ vi.mock(import("./state"), async (original) => {
     workflowEnvironment: {
       ...module.workflowEnvironment,
       tiximWorkflows: (() => ({ kind: "list" })) as never,
+      tiximWorkflowLog: (() => ({ kind: "log" })) as never,
       tiximWorkflowSearch: (({ input }: { input: TiximWorkflowSearchInput }) => ({
         kind: "search",
         input,
@@ -38,6 +42,13 @@ vi.mock(import("../../src/state/query"), async (original) => ({
   ...(await original()),
   useEnvironmentQuery: ((query: Query | null) => {
     if (query?.kind === "search") state.queries.push(query.input);
+    if (query?.kind === "log")
+      return {
+        data: { lines: [{ key: "1:0", text: "compiling crate" }], finished: false },
+        error: null,
+        isPending: true,
+        refresh: state.refresh,
+      };
     return {
       data: {
         runs: query?.kind === "search" ? state.candidates : state.runs,
@@ -147,6 +158,41 @@ it("attaches a suggested dependency from the selected daemon and searches withou
   );
   await userEvent.keyboard("{Enter}");
   await expect.poll(() => state.changeLink.mock.calls.length).toBe(2);
+});
+
+it("shows step progress for multi-step runs and toggles a run's live log", async () => {
+  const steps = { running: 1, failed: 0, waiting: 2, queued: 1, succeeded: 1, skipped: 0 };
+  state.connections = [{ id: "connection", label: "Local", daemonId: "one", available: true }];
+  state.runs = [
+    { ...run("one", "Build"), steps },
+    {
+      ...run("one", "Session"),
+      runId: "wf-solo",
+      steps: { ...steps, running: 1, waiting: 0, queued: 0, succeeded: 0 },
+    },
+  ];
+  await using screen = await renderUi(
+    <ThreadWorkflowsControl
+      environmentId={EnvironmentId.make("env")}
+      threadId={ThreadId.make("thread")}
+      isServerThread
+      displayMode="panel"
+    />,
+  );
+  const bar = screen.getByRole("progressbar");
+  await expect.element(bar).toHaveAttribute("aria-valuenow", "1");
+  await expect.element(bar).toHaveAttribute("aria-valuemax", "4");
+  // The row menu only takes pointer events while the row is hovered or focused.
+  const openMenu = async () => {
+    (screen.getByRole("button", { name: "Manage Build" }).element() as HTMLElement).focus();
+    await userEvent.keyboard("{Enter}");
+  };
+  await openMenu();
+  await page.getByRole("menuitem", { name: "Show log" }).click();
+  await expect.element(page.getByRole("log")).toHaveTextContent("compiling crate");
+  await openMenu();
+  await page.getByRole("menuitem", { name: "Hide log" }).click();
+  await expect.element(page.getByRole("log")).not.toBeInTheDocument();
 });
 
 it("keeps the row menu usable under the hover card and opens the run from its link", async () => {

@@ -116,12 +116,18 @@ export function registerMistralVibeAcpExtensions(context: AcpAdapterV2ExtensionC
   );
 }
 
+// JSON-RPC's internal error has a fixed message, so agents put the reason in `data`.
+const acpRequestErrorMessage = (error: EffectAcpErrors.AcpRequestError) =>
+  error.code === -32603 && typeof error.data === "string" && error.data.trim()
+    ? error.data
+    : error.errorMessage;
+
 export function acpRegistryPromptFailure(agentId: string, cause: unknown) {
   return makeProviderFailure({
     cause,
     ...(isAcpRequestError(cause)
       ? {
-          message: cause.errorMessage,
+          message: acpRequestErrorMessage(cause),
           code: String(cause.code),
           class:
             agentId === "mistral-vibe" && cause.code === MISTRAL_VIBE_RATE_LIMITED

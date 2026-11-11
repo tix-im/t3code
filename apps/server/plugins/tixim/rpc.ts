@@ -5,6 +5,7 @@ import {
   type TiximWorkflowOverviewInput,
   type TiximWorkflowSearchInput,
   type TiximWorkflowLinkInput,
+  type TiximWorkflowLogInput,
   type TiximWorkflowSnoozeInput,
   type TiximConnectionsInput,
   type TiximFlowRpcInput,
@@ -73,6 +74,11 @@ export const makeRpcHandlers = Effect.gen(function* () {
         Effect.provideService(SqlClient.SqlClient, sql),
         Effect.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
       ),
+    [WS_METHODS.tiximWorkflowLog]: (input: TiximWorkflowLogInput) =>
+      TiximWorkflows.logTail(input).pipe(
+        Stream.provideService(SqlClient.SqlClient, sql),
+        Stream.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
+      ),
     [WS_METHODS.tiximWorkflowSnooze]: (input: TiximWorkflowSnoozeInput) =>
       Option.isSome(workflowWaits)
         ? workflowWaits.value.snooze(input)
@@ -123,6 +129,7 @@ export const disabledRpcHandlers = Effect.succeed({
   [WS_METHODS.tiximWorkflowOverview]: (_input: TiximWorkflowOverviewInput) => Stream.fail(error),
   [WS_METHODS.tiximWorkflowSearch]: (_input: TiximWorkflowSearchInput) => Effect.fail(error),
   [WS_METHODS.tiximWorkflowLink]: (_input: TiximWorkflowLinkInput) => Effect.fail(error),
+  [WS_METHODS.tiximWorkflowLog]: (_input: TiximWorkflowLogInput) => Stream.fail(error),
   [WS_METHODS.tiximWorkflowSnooze]: (_input: TiximWorkflowSnoozeInput) => Effect.fail(error),
   [WS_METHODS.tiximConnections]: (_input: TiximConnectionsInput) => Effect.fail(error),
   [WS_METHODS.tiximProjects]: (_input: TiximProjectsInput) => Effect.fail(error),
