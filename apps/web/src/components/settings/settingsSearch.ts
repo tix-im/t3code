@@ -1218,6 +1218,20 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["commands scripts setup run dev server checkout worktree t3.json import"],
   },
   {
+    id: "project-direnv",
+    title: "Load direnv environment",
+    to: "/settings/worktrees",
+    scope: "project-defaults",
+    searchTerms: ["direnv envrc nix flake devenv mise shell environment variables path allow"],
+  },
+  {
+    id: "project-direnv-trust",
+    title: "Trust .envrc changes",
+    to: "/settings/worktrees",
+    scope: "project-defaults",
+    searchTerms: ["direnv envrc approve allow changes automatically"],
+  },
+  {
     id: "environment-icon",
     title: "Environment icon",
     to: "/settings/access",
