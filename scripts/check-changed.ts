@@ -345,7 +345,7 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
   const compilerApps = [
     {
       test: "apps/web/src/reactCompilerCoverage.test.ts",
-      root: "apps/web/src/",
+      roots: ["apps/web/src/", "apps/web/plugins/"],
       // Test names keep the repo-relative path.
       name: (file: string) => file,
       compiled: (file: string) =>
@@ -355,14 +355,16 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
     },
     {
       test: "apps/mobile/src/reactCompilerCoverage.test.ts",
-      root: "apps/mobile/src/",
+      roots: ["apps/mobile/src/", "apps/mobile/plugins/"],
       name: (file: string) => file.slice("apps/mobile/".length),
       compiled: (file: string) => /\.tsx?$/.test(file) && !/\.(test\.tsx?|d\.ts)$/.test(file),
       // The Metro, cache, and stale-allowlist cases check more than one file, deletions included.
       always: ["^(?!.*compiles )"],
     },
-  ].flatMap(({ test, root: appRoot, name, compiled, always }) => {
-    const changed = files.filter((file) => file.startsWith(appRoot) && compiled(file));
+  ].flatMap(({ test, roots, name, compiled, always }) => {
+    const changed = files.filter(
+      (file) => roots.some((root) => file.startsWith(root)) && compiled(file),
+    );
     if (changed.length === 0 || tests.has(test)) return [];
     const names = changed
       .filter((file) => present.includes(file))
