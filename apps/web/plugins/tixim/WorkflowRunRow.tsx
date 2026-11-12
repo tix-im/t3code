@@ -5,16 +5,11 @@ import {
   type TiximWorkflowRun,
 } from "@t3tools/contracts";
 import {
-  ActivityIcon,
   ArrowUpRightIcon,
   BanIcon,
-  ClockIcon,
   CopyIcon,
   EllipsisIcon,
-  FlagIcon,
-  HourglassIcon,
   LinkIcon,
-  ListChecksIcon,
   PauseIcon,
   PlayIcon,
   RotateCcwIcon,
@@ -25,10 +20,9 @@ import {
   WorkflowIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import {
   cn,
-  CopyValueButton,
   Menu,
   MenuItem,
   MenuPopup,
@@ -41,13 +35,13 @@ import {
   MenuTrigger,
   THREAD_DETAILS_PANEL_ICON_CLASS,
   ThreadDetailsControl,
-  ThreadHoverCard,
   ThreadHoverCardPopup,
   Tooltip,
   TooltipTrigger,
   useNowMinute,
   writeTextToClipboard,
 } from "../../src/plugins/host";
+import { WorkflowRunDetails } from "./WorkflowRunDetails";
 import { WorkflowRunLog } from "./WorkflowRunLog";
 import {
   allowedWorkflowRunActions,
@@ -58,12 +52,10 @@ import { WorkflowProgressBar } from "./WorkflowProgressBar";
 import { WorkflowTally } from "./WorkflowTally";
 import { WORKFLOW_TREE_INDENT, WorkflowTreeGuides } from "./WorkflowTreeGuides";
 import {
-  formatWorkflowTime,
   isFinishedWorkflowState,
   WORKFLOW_RELATIONSHIP_LABELS,
   WORKFLOW_TONE_CLASS,
   workflowReportCounts,
-  workflowReportGlyph,
   workflowRunElapsed,
   workflowRunNote,
   workflowRunTitle,
@@ -71,7 +63,6 @@ import {
   workflowStepCounts,
   workflowStepProgress,
   type OrderedWorkflowRun,
-  type WorkflowGlyph,
 } from "./workflowPresentation";
 
 const ACTION_ICONS: Record<WorkflowRunAction, LucideIcon> = {
@@ -82,137 +73,6 @@ const ACTION_ICONS: Record<WorkflowRunAction, LucideIcon> = {
   restart: RotateCcwIcon,
   cancel: BanIcon,
 };
-
-const SOURCE_LABELS: Record<TiximWorkflowRun["source"], string> = {
-  agent_session: "hosts this chat's agent",
-  automatic: "attached automatically",
-  manual: "attached manually",
-};
-
-function DetailRow({
-  icon: Icon,
-  iconClassName,
-  label,
-  wrap = false,
-  children,
-}: {
-  icon: LucideIcon;
-  iconClassName?: string;
-  label: string;
-  wrap?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2">
-      <span className="flex items-center gap-1.5 text-muted-foreground/70">
-        <Icon aria-hidden className={cn("size-3 shrink-0", iconClassName)} />
-        {label}
-      </span>
-      <span className={cn("min-w-0 text-foreground/85", !wrap && "truncate")}>{children}</span>
-    </div>
-  );
-}
-
-function WorkflowRunDetails({
-  run,
-  glyph,
-  elapsed,
-  onOpen,
-}: {
-  run: TiximWorkflowRun;
-  glyph: WorkflowGlyph;
-  elapsed: string | null;
-  onOpen: (() => void) | null;
-}) {
-  const { icon: Icon } = glyph;
-  const title = workflowRunTitle(run);
-  const steps = workflowStepCounts(run.steps, true);
-  const reports = workflowReportCounts(run.reports);
-  const active = run.activeSteps?.map((step) => step.name).join(", ");
-  const latest = run.latestReport ? workflowReportGlyph(run.latestReport.type) : null;
-  return (
-    <ThreadHoverCard
-      title={title}
-      wide
-      footer={
-        onOpen ? (
-          <div className="border-t border-border/65 pt-1">
-            <ThreadDetailsControl size="sm" variant="ghost" part="row" onClick={onOpen}>
-              <WorkflowIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
-              <span className="min-w-0 flex-1 truncate text-start">Open workflow</span>
-              <ArrowUpRightIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-            </ThreadDetailsControl>
-          </div>
-        ) : undefined
-      }
-    >
-      <div className="flex w-88 max-w-full min-w-0 items-center justify-between gap-4">
-        <span
-          className={cn(
-            "inline-flex min-w-0 items-center gap-1 font-medium",
-            WORKFLOW_TONE_CLASS[glyph.tone],
-          )}
-        >
-          <Icon aria-hidden className="size-3 shrink-0" />
-          <span className="min-w-0 truncate">{glyph.label}</span>
-        </span>
-        {elapsed ? <span className="shrink-0 tabular-nums">{elapsed}</span> : null}
-      </div>
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="truncate">{run.hid ?? run.runId}</span>
-        <CopyValueButton value={run.hid ?? run.runId} label="Copy workflow ID" />
-      </span>
-      <div aria-hidden className="h-px bg-border/65" />
-      {run.definitionName && run.definitionName !== title ? (
-        <DetailRow icon={WorkflowIcon} label="Workflow">
-          {run.definitionName}
-        </DetailRow>
-      ) : null}
-      {steps.length > 0 ? (
-        <DetailRow icon={ListChecksIcon} label="Steps" wrap>
-          <WorkflowTally counts={steps} labelled />
-        </DetailRow>
-      ) : null}
-      {active ? (
-        <DetailRow icon={PlayIcon} label="Now">
-          {active}
-        </DetailRow>
-      ) : null}
-      {reports.length > 0 ? (
-        <DetailRow icon={FlagIcon} label="Reports" wrap>
-          <WorkflowTally counts={reports} noun="reports" labelled />
-        </DetailRow>
-      ) : null}
-      {run.latestReport && latest ? (
-        <DetailRow
-          icon={latest.icon}
-          iconClassName={WORKFLOW_TONE_CLASS[latest.tone]}
-          label="Latest"
-        >
-          {run.latestReport.message}
-        </DetailRow>
-      ) : null}
-      {run.statusMessage ? (
-        <DetailRow icon={ActivityIcon} label="Status">
-          {run.statusMessage}
-        </DetailRow>
-      ) : null}
-      {run.waitingReason ? (
-        <DetailRow icon={HourglassIcon} label="Waiting">
-          {run.waitingReason.replaceAll("_", " ")}
-        </DetailRow>
-      ) : null}
-      {run.startedAt !== null ? (
-        <DetailRow icon={ClockIcon} label="Started">
-          {formatWorkflowTime(run.startedAt)}
-        </DetailRow>
-      ) : null}
-      <DetailRow icon={LinkIcon} label="Link">
-        {WORKFLOW_RELATIONSHIP_LABELS[run.relationship]}, {SOURCE_LABELS[run.source]}
-      </DetailRow>
-    </ThreadHoverCard>
-  );
-}
 
 export function WorkflowRunRow({
   environmentId,
@@ -327,13 +187,28 @@ export function WorkflowRunRow({
             run={run}
             glyph={glyph}
             elapsed={elapsed}
-            onOpen={
-              available
-                ? () => {
-                    setHovered(false);
-                    onOpen(run);
-                  }
-                : null
+            attached
+            footer={
+              available ? (
+                <div className="border-t border-border/65 pt-1">
+                  <ThreadDetailsControl
+                    size="sm"
+                    variant="ghost"
+                    part="row"
+                    onClick={() => {
+                      setHovered(false);
+                      onOpen(run);
+                    }}
+                  >
+                    <WorkflowIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+                    <span className="min-w-0 flex-1 truncate text-start">Open workflow</span>
+                    <ArrowUpRightIcon
+                      aria-hidden
+                      className="size-3 shrink-0 text-muted-foreground"
+                    />
+                  </ThreadDetailsControl>
+                </div>
+              ) : undefined
             }
           />
         </ThreadHoverCardPopup>
