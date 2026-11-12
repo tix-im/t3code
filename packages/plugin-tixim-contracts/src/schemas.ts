@@ -155,7 +155,7 @@ export const TiximConnectionsResult = Schema.Struct({
 });
 export const TiximProjectDirectory = Schema.Struct({
   path: Schema.String,
-  branch: Schema.NullOr(Schema.String),
+  branch: Schema.optional(Schema.NullOr(Schema.String)),
   is_primary: Schema.Boolean,
   source: Schema.String,
 });
@@ -175,7 +175,10 @@ export const TiximProjectLink = Schema.Struct({
   primaryPath: Schema.String,
   lastError: Schema.NullOr(Schema.String),
 });
-export const TiximProjectsInput = Schema.Struct({ connectionId: Schema.String });
+export const TiximProjectsInput = Schema.Struct({
+  connectionId: Schema.String,
+  projectIds: Schema.optional(Schema.Array(Schema.String)),
+});
 export const TiximProjectLinksInput = Schema.Struct({});
 export const TiximProjectLinksResult = Schema.Struct({ links: Schema.Array(TiximProjectLink) });
 export type TiximProjectsInput = typeof TiximProjectsInput.Type;
@@ -183,6 +186,7 @@ export const TiximProjectsResult = Schema.Struct({
   projects: Schema.Array(TiximProject),
   links: Schema.Array(TiximProjectLink),
   daemonUrl: Schema.String,
+  suggestedProjectId: Schema.optional(Schema.String),
 });
 export type TiximProjectsResult = typeof TiximProjectsResult.Type;
 export const TiximProjectLinkInput = Schema.Struct({

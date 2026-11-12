@@ -10,7 +10,7 @@ import {
 } from "../../src/plugins/host";
 import { workflowEnvironment } from "./state";
 
-function useConnection(environmentId: EnvironmentId) {
+function useConnection(environmentId: EnvironmentId, projectIds: readonly string[] | null) {
   const [connectionId, setConnectionId] = useState("");
   const connections = useEnvironmentQuery(
     workflowEnvironment.tiximConnections({ environmentId, input: {} }),
@@ -21,7 +21,10 @@ function useConnection(environmentId: EnvironmentId) {
     selected
       ? workflowEnvironment.tiximProjects({
           environmentId,
-          input: { connectionId: selected.id },
+          input: {
+            connectionId: selected.id,
+            ...(projectIds ? { projectIds: [...projectIds] } : {}),
+          },
         })
       : null,
   );
@@ -69,8 +72,8 @@ function ProjectDialog({
   projectIds: readonly string[] | null;
   onClose: () => void;
 }) {
-  const state = useConnection(environmentId);
-  const [target, setTarget] = useState("");
+  const state = useConnection(environmentId, projectIds);
+  const [target, setTarget] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const link = useAtomCommand(workflowEnvironment.tiximProjectLink, { reportFailure: false });
@@ -80,6 +83,7 @@ function ProjectDialog({
   const unlink = useAtomCommand(workflowEnvironment.tiximProjectUnlink, { reportFailure: false });
   const sync = useAtomCommand(workflowEnvironment.tiximProjectSync, { reportFailure: false });
   const linked = state.links.data?.links.find((row) => projectIds?.includes(row.projectId));
+  const selectedTarget = target ?? state.projects.data?.suggestedProjectId ?? "";
   const mutate = async (mode: "link" | "create" | "import" | "unlink" | "sync") => {
     if (busy || ((mode === "link" || mode === "create" || mode === "import") && !state.selected))
       return;
@@ -93,14 +97,14 @@ function ProjectDialog({
         input: {
           connectionId,
           projectIds: [...(projectIds ?? [])],
-          ...(mode === "create" ? { create: true } : { tiximProjectId: target }),
+          ...(mode === "create" ? { create: true } : { tiximProjectId: selectedTarget }),
         },
       });
       if (result._tag === "Failure") failureMessage = commandError(result);
     } else if (mode === "import") {
       const result = await importProject({
         environmentId,
-        input: { connectionId, tiximProjectId: target },
+        input: { connectionId, tiximProjectId: selectedTarget },
       });
       if (result._tag === "Failure") failureMessage = commandError(result);
     } else if (mode === "sync") {
@@ -145,7 +149,7 @@ function ProjectDialog({
           selected={item.id === state.selected?.id}
           onPress={() => {
             state.setConnectionId(item.id);
-            setTarget("");
+            setTarget(null);
           }}
         />
       ))}
@@ -156,13 +160,13 @@ function ProjectDialog({
             <Choice
               key={project.project_id}
               label={project.name}
-              selected={project.project_id === target}
+              selected={project.project_id === selectedTarget}
               onPress={() => setTarget(project.project_id)}
             />
           ))}
           <Button
             label={projectIds ? "Link project" : "Import project"}
-            disabled={busy || !target || !state.selected}
+            disabled={busy || !selectedTarget || !state.selected}
             onPress={() => void mutate(projectIds ? "link" : "import")}
           />
           {projectIds ? (

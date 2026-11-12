@@ -139,11 +139,36 @@ const save = Effect.fn(function* (
     last_error = NULL, updated_at = excluded.updated_at`;
 });
 
-export const list = Effect.fn("TiximProjects.list")(function* (connectionId: string) {
+export const list = Effect.fn("TiximProjects.list")(function* (
+  connectionId: string,
+  projectIds: ReadonlyArray<string> = [],
+) {
   const daemonUrl = yield* url(connectionId);
   const projects = yield* projectList(connectionId);
   const allLinks = yield* links();
-  return { projects, links: allLinks, daemonUrl };
+  if (projectIds.length === 0) return { projects, links: allLinks, daemonUrl };
+  const service = yield* ProjectService.ProjectService;
+  const selected = yield* Effect.forEach(projectIds, (id) => service.getById(ProjectId.make(id)));
+  const paths = new Set(
+    yield* Effect.forEach(
+      selected.filter(Option.isSome).map((project) => project.value.workspaceRoot),
+      canonicalKnown,
+    ),
+  );
+  const matches = yield* Effect.filter(projects, (project) =>
+    Effect.gen(function* () {
+      const directories = yield* Effect.forEach(project.directories, (dir) =>
+        canonicalKnown(dir.path),
+      );
+      return directories.some((path) => paths.has(path));
+    }),
+  );
+  return {
+    projects,
+    links: allLinks,
+    daemonUrl,
+    ...(matches.length === 1 ? { suggestedProjectId: matches[0]!.project_id } : {}),
+  };
 });
 
 export const unlink = Effect.fn("TiximProjects.unlink")(function* (input: TiximProjectUnlinkInput) {

@@ -88,7 +88,7 @@ export const makeRpcHandlers = Effect.gen(function* () {
         Effect.provideService(ProcessRunner.ProcessRunner, tiximProcessRunner),
       ),
     [WS_METHODS.tiximProjects]: (input: TiximProjectsInput) =>
-      projectRpc(TiximProjects.list(input.connectionId)),
+      projectRpc(TiximProjects.list(input.connectionId, input.projectIds)),
     [WS_METHODS.tiximProjectLinks]: (_input: Record<string, never>) =>
       projectRpc(TiximProjects.listLinks()),
     [WS_METHODS.tiximProjectLink]: (input: TiximProjectLinkInput) =>
