@@ -2011,3 +2011,9 @@ const program = Effect.gen(function* () {
 );
 
 NodeRuntime.runMain(program);
+
+// runMain installs its own SIGTERM teardown, so this must follow it.
+if (process.env.T3_ACP_IGNORE_SIGTERM === "1") {
+  process.removeAllListeners("SIGTERM");
+  process.on("SIGTERM", () => undefined);
+}
