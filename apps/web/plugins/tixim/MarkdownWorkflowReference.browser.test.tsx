@@ -46,11 +46,6 @@ vi.mock(import("./state"), async (original) => {
     },
   };
 });
-// Loading the real settings layout outside the app stalls the browser run before any test.
-vi.mock(
-  import("../../src/components/settings/settingsLayout"),
-  () => ({ SettingsSection: () => null, SettingsRow: () => null }) as never,
-);
 vi.mock(import("../../src/plugins/host"), async (original) => ({
   ...(await original()),
   useAtomCommand: (() => state.changeLink) as never,
