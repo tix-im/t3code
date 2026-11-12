@@ -2,12 +2,13 @@
 import * as NodeFS from "node:fs";
 import * as NodeSqlite from "node:sqlite";
 
-import { migrationManifest } from "./Migrations.ts";
+import { migrationManifest, withoutLegacyPluginMigrations } from "./Migrations.ts";
 
 export const BUILD_MIGRATION_HEAD = Math.max(...migrationManifest.map(([id]) => id));
 
-/** Migrations the database records, read-only. A missing or new database records none; one that
- * exists but cannot be read is null, since its history is unknown. */
+/** Core migrations the database records, read-only, without the plugin rows startup moves to their
+ * own tables. A missing or new database records none; one that exists but cannot be read is null,
+ * since its history is unknown. */
 export function recordedMigrations(
   databasePath: string,
 ): ReadonlyArray<{ readonly id: number; readonly name: string }> | null {
@@ -24,10 +25,12 @@ export function recordedMigrations(
       )
       .get();
     if (hasTable === undefined) return [];
-    return db
-      .prepare("SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id")
-      .all()
-      .map((row) => ({ id: Number(row.migration_id), name: String(row.name) }));
+    return withoutLegacyPluginMigrations(
+      db
+        .prepare("SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id")
+        .all()
+        .map((row) => ({ id: Number(row.migration_id), name: String(row.name) })),
+    );
   } catch {
     return null;
   } finally {

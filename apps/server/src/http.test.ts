@@ -96,6 +96,40 @@ describe("MCP app asset responses", () => {
   );
 });
 
+describe("embedded workflow assets", () => {
+  it.effect("allows opaque iframe module loads for GET, HEAD and cache validation", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped();
+      yield* fs.makeDirectory(path.join(directory, "tix-flow"));
+      yield* fs.writeFileString(path.join(directory, "tix-flow", "app.js"), "export default 1");
+      const request = yield* makeStaticRequest(directory);
+      const response = yield* request("/tix-flow/app.js", { headers: { origin: "null" } });
+      expect(response.status).toBe(200);
+      expect(response.headers["access-control-allow-origin"]).toBe("*");
+      const etag = response.headers["etag"]!;
+      const cached = yield* request("/tix-flow/app.js", {
+        headers: { origin: "null", "if-none-match": etag },
+      });
+      expect(cached.status).toBe(304);
+      expect(cached.headers["access-control-allow-origin"]).toBe("*");
+      const head = yield* request("/tix-flow/app.js", {
+        method: "HEAD",
+        headers: { origin: "null" },
+      });
+      expect(head.headers["access-control-allow-origin"]).toBe("*");
+    }).pipe(
+      Effect.provide(
+        ServerConfig.layerTest(process.cwd(), { prefix: "t3-embedded-assets-" }).pipe(
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
+      Effect.scoped,
+    ),
+  );
+});
+
 describe("browser API CORS", () => {
   it("accepts protocol negotiation with authenticated browser headers", async () => {
     const layerRoute = Layer.effectDiscard(
