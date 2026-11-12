@@ -54,6 +54,7 @@ import {
   WORKFLOW_RUN_ACTION_LABELS,
   type WorkflowRunAction,
 } from "./workflowActions";
+import { WorkflowProgressBar } from "./WorkflowProgressBar";
 import { WorkflowTally } from "./WorkflowTally";
 import { WORKFLOW_TREE_INDENT, WorkflowTreeGuides } from "./WorkflowTreeGuides";
 import {
@@ -210,28 +211,6 @@ function WorkflowRunDetails({
         {WORKFLOW_RELATIONSHIP_LABELS[run.relationship]}, {SOURCE_LABELS[run.source]}
       </DetailRow>
     </ThreadHoverCard>
-  );
-}
-
-function WorkflowProgressBar({
-  done,
-  total,
-  failed,
-}: NonNullable<ReturnType<typeof workflowStepProgress>>) {
-  return (
-    <span
-      role="progressbar"
-      aria-label="Workflow steps"
-      aria-valuemin={0}
-      aria-valuemax={total}
-      aria-valuenow={done}
-      className="block h-1 overflow-hidden rounded-full bg-muted"
-    >
-      <span
-        className={cn("block h-full", failed ? "bg-destructive" : "bg-info")}
-        style={{ width: `${(done / total) * 100}%` }}
-      />
-    </span>
   );
 }
 

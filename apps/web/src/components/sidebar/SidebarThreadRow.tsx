@@ -363,12 +363,13 @@ function SidebarThreadTooltip({
             <div className="min-w-0 truncate text-foreground/75">{pluginThread.summary.text}</div>
           </div>
         ) : null}
-        {pluginThread?.items?.map((item) => (
-          <div key={item.key} className="flex min-w-0 items-center gap-2 pl-5">
-            <item.icon aria-hidden className={cn("size-3 shrink-0", item.iconClassName)} />
-            <div className="min-w-0 truncate text-foreground/75">{item.label}</div>
-          </div>
-        ))}
+        {pluginThread?.hoverContent ??
+          pluginThread?.items?.map((item) => (
+            <div key={item.key} className="flex min-w-0 items-center gap-2 pl-5">
+              <item.icon aria-hidden className={cn("size-3 shrink-0", item.iconClassName)} />
+              <div className="min-w-0 truncate text-foreground/75">{item.label}</div>
+            </div>
+          ))}
         {thread.runtime?.lastError ? (
           <div
             className={cn(
@@ -1653,7 +1654,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {titleLineIcons}
             </div>
             {metaLine}
-            {pluginItems.length > 0 ? (
+            {pluginThread?.rowContent ? (
+              <div className="mt-1 min-w-0 text-xs text-muted-foreground">
+                {pluginThread.rowContent}
+              </div>
+            ) : pluginItems.length > 0 ? (
               <div className="mt-0.5 flex min-w-0 items-center gap-2.5 overflow-hidden text-secondary-label text-xs">
                 {pluginItems.map((item) => (
                   <span key={item.key} className="flex min-w-0 shrink items-center gap-1">

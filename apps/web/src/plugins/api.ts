@@ -45,6 +45,10 @@ export interface PluginSidebarThread {
   };
   /** What the thread waits on: an extra line on its card and items in its hover card. */
   readonly items?: ReadonlyArray<PluginSidebarThreadItem>;
+  /** Replaces the item list beneath the thread with plugin-owned details and controls. */
+  readonly rowContent?: ReactNode;
+  /** Replaces the item list in the hover card with plugin-owned details and controls. */
+  readonly hoverContent?: ReactNode;
 }
 
 export interface PluginSidebarThreadActionProps {
