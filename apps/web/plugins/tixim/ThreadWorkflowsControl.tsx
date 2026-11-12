@@ -104,6 +104,10 @@ export function ThreadWorkflowsControl({
     action: WorkflowRunAction;
   } | null>(null);
   const [snoozeBusy, setSnoozeBusy] = useState(false);
+  const [requestedSnooze, setRequestedSnooze] = useState<{
+    value: boolean;
+    settledAt: number | null;
+  } | null>(null);
   const connections = live.data?.connections ?? [];
   const runs = live.data?.runs ?? [];
   // A subscription reports pending on every emission, so only missing data means loading.
@@ -159,21 +163,29 @@ export function ThreadWorkflowsControl({
       );
     live.refresh();
   };
-  const snoozed = live.data?.snoozed === true;
+  const liveSnoozed = live.data?.snoozed === true;
+  // Refreshing would restart the stream and blank every row until the daemons answer, so the
+  // requested state shows until the next workflow emission reports it.
+  if (
+    requestedSnooze?.settledAt != null &&
+    (requestedSnooze.value === liveSnoozed || live.dataUpdatedAt > requestedSnooze.settledAt)
+  )
+    setRequestedSnooze(null);
+  const snoozed = requestedSnooze?.value ?? liveSnoozed;
   const awaitable = runs.some(
     (run) => run.source !== "agent_session" && !isFinishedWorkflowState(run.state),
   );
   const toggleSnooze = async () => {
+    const snoozing = !snoozed;
     setSnoozeBusy(true);
     setError(null);
-    const result = await changeSnooze({
-      environmentId,
-      input: { threadId, snoozing: !snoozed },
-    });
+    setRequestedSnooze({ value: snoozing, settledAt: null });
+    const result = await changeSnooze({ environmentId, input: { threadId, snoozing } });
     setSnoozeBusy(false);
-    if (result._tag === "Failure")
+    if (result._tag === "Failure") {
+      setRequestedSnooze(null);
       setError("Could not change the snooze. The thread may have a pending request.");
-    else live.refresh();
+    } else setRequestedSnooze({ value: result.value.status === "snoozed", settledAt: Date.now() });
   };
   const snoozeLabel = snoozed ? "Wake thread now" : "Snooze until workflows finish";
   const snoozeControl =

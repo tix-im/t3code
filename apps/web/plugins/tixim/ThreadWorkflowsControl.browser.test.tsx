@@ -20,6 +20,7 @@ const state = vi.hoisted(() => ({
   connections: [] as TiximWorkflowConnection[],
   queries: [] as TiximWorkflowSearchInput[],
   pendingQuery: null as string | null,
+  snoozed: false,
   changeLink: vi.fn(),
   refresh: vi.fn(),
 }));
@@ -53,7 +54,9 @@ vi.mock(import("../../src/state/query"), async (original) => ({
       data: {
         runs: query?.kind === "search" ? state.candidates : state.runs,
         connections: state.connections,
+        snoozed: state.snoozed,
       },
+      dataUpdatedAt: 0,
       error: null,
       // A stream atom reports waiting on every emission until the stream ends.
       isPending: query?.kind === "list" || query?.input.query === state.pendingQuery,
@@ -160,6 +163,34 @@ it("attaches a suggested dependency from the selected daemon and searches withou
   );
   await userEvent.keyboard("{Enter}");
   await expect.poll(() => state.changeLink.mock.calls.length).toBe(2);
+});
+
+it("shows a snooze at once without restarting the workflow stream", async () => {
+  state.connections = [{ id: "connection", label: "Local", daemonId: "one", available: true }];
+  state.runs = [run("one", "Build")];
+  state.snoozed = false;
+  state.refresh.mockReset();
+  state.changeLink.mockReset().mockResolvedValue({
+    _tag: "Success",
+    value: { status: "snoozed", runCount: 1 },
+  });
+  await using screen = await renderUi(
+    <ThreadWorkflowsControl
+      environmentId={EnvironmentId.make("env")}
+      threadId={ThreadId.make("thread")}
+      isServerThread
+      displayMode="panel"
+    />,
+  );
+  await screen.getByRole("button", { name: "Snooze until workflows finish" }).click();
+  await expect
+    .element(screen.getByRole("button", { name: "Wake thread now" }))
+    .toHaveAttribute("aria-pressed", "true");
+  expect(state.changeLink).toHaveBeenCalledWith({
+    environmentId: "env",
+    input: { threadId: "thread", snoozing: true },
+  });
+  expect(state.refresh).not.toHaveBeenCalled();
 });
 
 it("shows step progress for multi-step runs and toggles a run's live log", async () => {
