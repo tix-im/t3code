@@ -566,6 +566,14 @@
     "./provider-instance-ids": {
       "types": "./src/providerInstanceIds.ts",
       "default": "./src/providerInstanceIds.ts"
+    },
+    "./plugins/tixim/state": {
+      "types": "./plugins/tixim/state.ts",
+      "default": "./plugins/tixim/state.ts"
+    },
+    "./plugins/tixim/references": {
+      "types": "./plugins/tixim/references.ts",
+      "default": "./plugins/tixim/references.ts"
     }
   },
   "scripts": {
@@ -575,6 +583,7 @@
   "dependencies": {
     "@pierre/diffs": "catalog:",
     "@t3tools/contracts": "workspace:*",
+    "@t3tools/plugin-tixim-provider": "workspace:*",
     "@t3tools/provider-acp-registry": "workspace:*",
     "@t3tools/provider-core": "workspace:*",
     "@t3tools/provider-cursor": "workspace:*",

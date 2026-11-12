@@ -67,6 +67,8 @@ const DEFAULT_ACP_REGISTRY_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({})
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 
 export interface AcpRegistryAdapterV2Options {
+  /** Driver kind reported by ACP-backed drivers that reuse this adapter. */
+  readonly driverKind?: ProviderDriverKind;
   readonly instanceId: Parameters<typeof makeAcpAdapterV2>[0]["instanceId"];
   readonly settings: AcpRegistrySettings;
   readonly environment: NodeJS.ProcessEnv;
@@ -210,7 +212,7 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     : options;
   const copilotRouting = isCopilot ? makeCopilotSubagentRouting() : undefined;
   const flavor: AcpAdapterV2Flavor = {
-    driver: ACP_REGISTRY_PROVIDER,
+    driver: options.driverKind ?? ACP_REGISTRY_PROVIDER,
     // Cancelling a Copilot prompt also kills the background agents it started.
     capabilities: isCopilot
       ? {
@@ -344,6 +346,55 @@ export type AcpRegistryAdapterV2DriverEnv =
   | ProviderEventLoggers.ProviderEventLoggers
   | ProviderHost.ProviderHost;
 
+export interface AcpRegistryAdapterCreateOptions {
+  readonly driverKind: ProviderDriverKind;
+  readonly displayName: string;
+  /** Adjusts the host environment before the instance's own variables apply. */
+  readonly hostEnvironment?: (environment: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+}
+
+/** Builds the orchestration adapter for any driver whose runtime is an ACP Registry agent. */
+export const createAcpRegistryAdapter = Effect.fn("createAcpRegistryAdapter")(
+  function* (
+    input: ProviderAdapterDriverCreateInput<AcpRegistrySettings>,
+    options: AcpRegistryAdapterCreateOptions,
+  ) {
+    const hostEnvironment = yield* HostProcess.Environment;
+    const selfInvocation = yield* resolveSelfInvocation();
+    const providerEventLoggers = yield* ProviderEventLoggers.ProviderEventLoggers;
+    const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
+    return yield* makeAcpRegistryAdapterV2({
+      driverKind: options.driverKind,
+      instanceId: input.instanceId,
+      settings: { ...input.config, enabled: input.enabled },
+      environment: yield* mergeProviderInstanceEnvironment(
+        input.environment,
+        options.hostEnvironment?.(hostEnvironment) ?? hostEnvironment,
+      ),
+      selfInvocation,
+      continuationRequests: yield* ProviderContinuationRequests.ProviderContinuationRequests,
+      nativeLogging: (threadId) =>
+        makeNativeLogger({
+          nativeEventLogger: providerEventLoggers.native,
+          provider: options.driverKind,
+          threadId,
+        }),
+    });
+  },
+  (effect, input, options) =>
+    effect.pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterDriverCreateError({
+            driver: options.driverKind,
+            instanceId: input.instanceId,
+            detail: `Failed to create ${options.displayName} adapter.`,
+            cause,
+          }),
+      ),
+    ),
+);
+
 export const AcpRegistryAdapterV2Driver: ProviderAdapterDriver<
   AcpRegistrySettings,
   AcpRegistryAdapterV2DriverEnv
@@ -351,37 +402,9 @@ export const AcpRegistryAdapterV2Driver: ProviderAdapterDriver<
   driverKind: ACP_REGISTRY_PROVIDER,
   configSchema: AcpRegistrySettings,
   defaultConfig: (): AcpRegistrySettings => DEFAULT_ACP_REGISTRY_SETTINGS,
-  create: Effect.fn("AcpRegistryAdapterV2Driver.create")(
-    function* (input: ProviderAdapterDriverCreateInput<AcpRegistrySettings>) {
-      const hostEnvironment = yield* HostProcess.Environment;
-      const selfInvocation = yield* resolveSelfInvocation();
-      const providerEventLoggers = yield* ProviderEventLoggers.ProviderEventLoggers;
-      const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
-      return yield* makeAcpRegistryAdapterV2({
-        instanceId: input.instanceId,
-        settings: { ...input.config, enabled: input.enabled },
-        environment: yield* mergeProviderInstanceEnvironment(input.environment, hostEnvironment),
-        selfInvocation,
-        continuationRequests: yield* ProviderContinuationRequests.ProviderContinuationRequests,
-        nativeLogging: (threadId) =>
-          makeNativeLogger({
-            nativeEventLogger: providerEventLoggers.native,
-            provider: ACP_REGISTRY_PROVIDER,
-            threadId,
-          }),
-      });
-    },
-    (effect, input) =>
-      effect.pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderAdapterDriverCreateError({
-              driver: ACP_REGISTRY_PROVIDER,
-              instanceId: input.instanceId,
-              detail: "Failed to create ACP Registry adapter.",
-              cause,
-            }),
-        ),
-      ),
-  ),
+  create: (input) =>
+    createAcpRegistryAdapter(input, {
+      driverKind: ACP_REGISTRY_PROVIDER,
+      displayName: "ACP Registry",
+    }),
 };
