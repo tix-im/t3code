@@ -1,6 +1,7 @@
 import {
   CommandId,
   MessageId,
+  type OrchestrationV2ServerCommand,
   ThreadId,
   TiximCommandError,
   TiximWorkflowRun,
@@ -99,9 +100,16 @@ function notificationEdge(
   return run.attention && !attentionSeen ? "attention" : undefined;
 }
 
+// A parent workflow reports its own children's failures; only the root run is a task.
+function isSubworkflow(run: Pick<TiximWorkflowRun, "source" | "parentRunId">) {
+  return run.source === "automatic" && run.parentRunId !== "";
+}
+
 function isUnfinishedTask(run: TiximWorkflowRun) {
   return (
-    run.source !== "agent_session" && (run.availability !== "available" || !terminal.has(run.state))
+    run.source !== "agent_session" &&
+    !isSubworkflow(run) &&
+    (run.availability !== "available" || !terminal.has(run.state))
   );
 }
 
@@ -191,6 +199,19 @@ export const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
   const random = yield* SecureRandom.SecureRandom;
   const lock = yield* Semaphore.make(1);
+
+  // A rejected command id is rejected forever, so retrying it would wedge the row behind it.
+  const dispatchWake = (command: OrchestrationV2ServerCommand) =>
+    engine.dispatch(command).pipe(
+      Effect.asVoid,
+      Effect.catchTags({
+        OrchestratorCommandPreviouslyRejectedError: (error) =>
+          Effect.logWarning("Dropping a rejected workflow wake", {
+            commandId: error.commandId,
+            detail: error.detail,
+          }),
+      }),
+    );
 
   const wait = Effect.fn("WorkflowWaits.wait")(function* (input: TiximWorkflowWaitInput) {
     if (input.waiting === false) {
@@ -335,9 +356,9 @@ export const make = Effect.gen(function* () {
           yield* sql`UPDATE tixim_workflow_waits SET wake_json = ${encodeWake(wake)} WHERE thread_id = ${row.thread_id} AND wait_id = ${row.wait_id}`;
         }
         if (wake === undefined) return;
-        yield* engine.dispatch({
+        yield* dispatchWake({
           type: "message.dispatch",
-          createdBy: "system",
+          createdBy: "agent",
           creationSource: "server",
           commandId: CommandId.make(`server:workflow-wait:${row.wait_id}`),
           messageId: MessageId.make(`message:workflow-wait:${row.wait_id}`),
@@ -347,6 +368,16 @@ export const make = Effect.gen(function* () {
           dispatchMode: { type: "queue_after_active" },
           notification: { source: { kind: "monitor" }, outcome: "updated", summary: wake.summary },
         });
+        // Automatic wakes keep a snooze, but a settled wait must surface its thread.
+        const shell = yield* engine.getThreadShell(ThreadId.make(row.thread_id));
+        if (shell?.snoozedUntil != null) {
+          yield* dispatchWake({
+            type: "thread.unsnooze",
+            commandId: CommandId.make(`server:workflow-wait-unsnooze:${row.wait_id}`),
+            threadId: ThreadId.make(row.thread_id),
+            reason: "user",
+          });
+        }
         yield* markReported(row.thread_id, registered, current ?? []);
         yield* sql`DELETE FROM tixim_workflow_waits WHERE thread_id = ${row.thread_id} AND wait_id = ${row.wait_id}`;
       }),
@@ -441,9 +472,9 @@ export const make = Effect.gen(function* () {
           const shell = yield* engine.getThreadShell(ThreadId.make(row.thread_id));
           // Resuming a finished child would report a false completion to its parent.
           if (reason !== undefined && shell?.lineage.relationshipToParent !== "subagent") {
-            yield* engine.dispatch({
+            yield* dispatchWake({
               type: "message.dispatch",
-              createdBy: "system",
+              createdBy: "agent",
               creationSource: "server",
               commandId: CommandId.make(`server:workflow-snooze-turn:${row.snooze_id}`),
               messageId: MessageId.make(`message:workflow-snooze-turn:${row.snooze_id}`),
@@ -496,6 +527,7 @@ export const make = Effect.gen(function* () {
       FROM tixim_workflow_links links
       JOIN orchestration_v2_projection_threads thread ON thread.thread_id = links.thread_id
       WHERE links.excluded = 0 AND links.relationship != 'untracked' AND links.source != 'agent_session'
+      AND NOT (links.source = 'automatic' AND COALESCE(json_extract(links.payload_json, '$.parentRunId'), '') != '')
       AND thread.deleted_at IS NULL AND thread.archived_at IS NULL
       AND (links.last_state IS NULL OR links.last_state NOT IN ('completed', 'failed', 'cancelled', 'skipped'))`;
     const groups = new Map<string, LinkRow[]>();
@@ -567,9 +599,9 @@ export const make = Effect.gen(function* () {
               batch.map((row) => row.id),
             )}`;
         }
-        yield* engine.dispatch({
+        yield* dispatchWake({
           type: "message.dispatch",
-          createdBy: "system",
+          createdBy: "agent",
           creationSource: "server",
           commandId: CommandId.make(`server:workflow-notification:${wakeId}`),
           messageId: MessageId.make(`message:workflow-notification:${wakeId}`),
