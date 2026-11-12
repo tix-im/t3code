@@ -105,6 +105,8 @@ const TiximWorkflowReportCounts = Schema.Struct({
 export const TiximWorkflowRunDetails = {
   hid: Schema.optional(Schema.String),
   definitionName: Schema.optional(Schema.String),
+  projectName: Schema.optional(Schema.String),
+  projectPath: Schema.optional(Schema.String),
   statusMessage: Schema.optional(Schema.String),
   waitingReason: Schema.optional(Schema.String),
   pendingInputCount: Schema.optional(Schema.Number),

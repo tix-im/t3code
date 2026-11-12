@@ -1,15 +1,20 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ThreadId, TiximWorkflowRun } from "@t3tools/contracts";
 import { useContext, useState } from "react";
+import { EyeIcon } from "lucide-react";
 import {
   useAtomCommand,
-  Button,
-  CopyValueButton,
-  PreviewCard,
-  PreviewCardPopup,
-  PreviewCardTrigger,
+  THREAD_DETAILS_PANEL_ICON_CLASS,
+  ThreadDetailsControl,
+  ThreadHoverCard,
+  ThreadHoverCardPopup,
+  Tooltip,
+  TooltipTrigger,
+  useNowMinute,
 } from "../../src/plugins/host";
 import { workflowEnvironment } from "./state";
+import { WorkflowRunDetails } from "./WorkflowRunDetails";
+import { workflowRunElapsed, workflowStateGlyph } from "./workflowPresentation";
 import { workflowStateSymbol } from "@t3tools/client-runtime/plugins/tixim/references";
 
 export function MarkdownWorkflowReference({
@@ -68,15 +73,17 @@ export function MarkdownWorkflowReference({
     }
     setBusy(false);
   };
+  const nowSeconds = Date.parse(`${useNowMinute()}:00Z`) / 1000;
   return (
-    <PreviewCard
+    <Tooltip
       open={open}
       onOpenChange={(value) => {
         setOpen(value);
         if (value) for (const query of state.queries) registry.refresh(query);
       }}
     >
-      <PreviewCardTrigger
+      <TooltipTrigger
+        delay={200}
         render={
           <button
             type="button"
@@ -89,51 +96,52 @@ export function MarkdownWorkflowReference({
       >
         <span aria-hidden>{workflowStateSymbol(status)} </span>
         {hid}
-      </PreviewCardTrigger>
-      <PreviewCardPopup>
-        <div className="w-80 max-w-[calc(100vw-2rem)] space-y-3 p-3 text-sm">
-          <div className="flex items-center gap-1">
-            <strong className="break-all">{hid}</strong>
-            <CopyValueButton value={hid} label="Copy workflow ID" />
-          </div>
-          {state.runs.length === 0 ? (
-            <p>{status}</p>
-          ) : (
-            state.runs.map((run) => {
-              const linked = state.linked.find((other) => other.daemonId === run.daemonId);
-              const runStatus = run.availability === "available" ? run.state : "Unavailable";
-              return (
-                <div key={run.daemonId} className="space-y-2">
-                  <p>{run.name || hid}</p>
-                  <p>
-                    {workflowStateSymbol(runStatus)} {runStatus}
-                    {run.attention ? " · Needs attention" : ""}
-                  </p>
-                  <p className="break-all text-xs text-muted-foreground">
-                    {run.connectionId} · {run.daemonId}
-                  </p>
-                  {linked ? (
-                    <p>Attached · {linked.relationship.replaceAll("_", " ")}</p>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!canTrack || busy || run.availability !== "available"}
-                      onClick={() => void track(run)}
-                    >
-                      Add to tracking
-                    </Button>
-                  )}
-                </div>
-              );
-            })
-          )}
-          {state.runs.length > 0 && state.unavailable ? (
-            <p>Some connections are unavailable.</p>
-          ) : null}
-          {error ? <p role="alert">{error}</p> : null}
-        </div>
-      </PreviewCardPopup>
-    </PreviewCard>
+      </TooltipTrigger>
+      <ThreadHoverCardPopup className="pointer-events-auto max-w-96">
+        {state.runs.length === 0 ? (
+          <ThreadHoverCard title={hid}>{status}</ThreadHoverCard>
+        ) : (
+          state.runs.map((run) => {
+            const available = run.availability === "available";
+            const linked = state.linked.includes(run);
+            return (
+              <WorkflowRunDetails
+                key={run.daemonId}
+                run={run}
+                glyph={workflowStateGlyph(available ? run.state : "unavailable")}
+                elapsed={available ? workflowRunElapsed(run, nowSeconds) : null}
+                attached={linked}
+                footer={
+                  linked ? undefined : (
+                    <div className="border-t border-border/65 pt-1">
+                      <ThreadDetailsControl
+                        size="sm"
+                        variant="ghost"
+                        part="row"
+                        disabled={!canTrack || busy || !available}
+                        onClick={() => void track(run)}
+                      >
+                        <EyeIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+                        <span className="min-w-0 flex-1 truncate text-start">Add to tracking</span>
+                      </ThreadDetailsControl>
+                    </div>
+                  )
+                }
+              />
+            );
+          })
+        )}
+        {state.runs.length > 0 && state.unavailable ? (
+          <p className="m-0 px-1 pb-2 text-xs text-muted-foreground">
+            Some connections are unavailable.
+          </p>
+        ) : null}
+        {error ? (
+          <p role="alert" className="m-0 px-1 pb-2 text-xs text-destructive-foreground">
+            {error}
+          </p>
+        ) : null}
+      </ThreadHoverCardPopup>
+    </Tooltip>
   );
 }
