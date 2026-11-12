@@ -30,6 +30,7 @@ import {
   type SecretReference,
   type ServerProvider,
   type ServerProviderModel,
+  isAcpBackedDriverKind,
 } from "@t3tools/contracts";
 
 import {
@@ -1249,12 +1250,13 @@ export function ProviderInstanceCard({
   const runtimeFields = driverOption ? (
     <ProviderSettingsForm
       definition={driverOption}
+      environmentId={environmentId}
+      instanceId={instanceId}
       value={instance.config}
       idPrefix={`provider-instance-${instanceId}`}
       variant="settings"
       onChange={updateConfig}
       managed={instanceLocks && { keys: instanceLocks.configKeys, reason: instanceLocks.reason }}
-      environmentId={environmentId}
     />
   ) : (
     <SettingsRow
@@ -1384,7 +1386,9 @@ export function ProviderInstanceCard({
           />
         </div>
       </SettingsSection>
-      {environmentId !== undefined && liveProvider?.driver === "acpRegistry" ? (
+      {environmentId !== undefined &&
+      liveProvider !== undefined &&
+      isAcpBackedDriverKind(liveProvider.driver) ? (
         <AcpSessionManagementSection
           environmentId={environmentId}
           instanceId={instanceId}

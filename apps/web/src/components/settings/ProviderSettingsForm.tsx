@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
   acceptsSecretReference,
   isSecretReference,
+  type ProviderInstanceId,
   isSecretSetting,
   type EnvironmentId,
   type ProviderSettingsFormAnnotation,
@@ -16,6 +17,14 @@ import { PlusIcon, XIcon } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import {
+  Combobox,
+  ComboboxTrigger,
+  ComboboxPopup,
+  ComboboxSearchInput,
+  ComboboxList,
+  ComboboxItem,
+} from "../ui/combobox";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
 import { SecretInput } from "./SecretInput";
@@ -29,8 +38,11 @@ export type SettingsFormDefinition = Pick<ProviderClientDefinition, "settingsSch
   readonly driverKind?: ProviderClientDefinition["driverKind"];
 };
 import { SettingsRow } from "./settingsLayout";
+import { webPlugins } from "../../plugins";
+import type { PluginProviderFieldOverride } from "../../plugins/api";
 
 export interface ProviderSettingsFieldModel {
+  readonly allowCustom?: boolean | undefined;
   readonly key: string;
   readonly control: ProviderSettingsFormControl;
   readonly label: string;
@@ -340,14 +352,15 @@ export function nextProviderConfigWithFieldValue(
 
 interface ProviderSettingsFormProps {
   readonly definition: SettingsFormDefinition;
+  /** Environment whose server lists dynamic choices, for provider fields. */
+  readonly environmentId?: EnvironmentId | undefined;
+  readonly instanceId?: ProviderInstanceId | undefined;
   readonly value: unknown;
   readonly idPrefix: string;
   readonly variant: "card" | "dialog" | "settings";
   readonly onChange: (nextConfig: Record<string, unknown> | undefined) => void;
   /** Config keys an administrator's policy pins, shown inert with the reason. */
   readonly managed?: { readonly keys: ReadonlySet<string>; readonly reason: string } | undefined;
-  /** Where the secret providers offered for `SettingsSecretValue` fields are configured. */
-  readonly environmentId?: EnvironmentId | undefined;
 }
 
 function SecretSettingsControl({
@@ -418,10 +431,65 @@ function ProviderSettingsSelect({
   readonly className?: string | undefined;
   readonly onChange: ProviderSettingsFormProps["onChange"];
 }) {
+  const [query, setQuery] = useState("");
   const options = field.options ?? [];
   const fallback = options[0]?.value ?? "";
   const current = readProviderConfigString(value, field.key) || fallback;
   const label = options.find((option) => option.value === current)?.label ?? current;
+  if (field.allowCustom) {
+    const needle = query.trim();
+    const choices = options.filter((option) =>
+      `${option.value} ${option.label}`.toLowerCase().includes(needle.toLowerCase()),
+    );
+    if (needle && !options.some((option) => option.value === needle)) {
+      choices.push({ value: needle, label: `Use ${needle}` });
+    }
+    return (
+      <Combobox
+        items={choices}
+        filteredItems={choices}
+        filter={null}
+        itemToStringLabel={(option) => option.label}
+        isItemEqualToValue={(a, b) => a.value === b.value}
+        value={options.find((option) => option.value === current) ?? null}
+        onOpenChange={(open) => {
+          if (!open) setQuery("");
+        }}
+        onValueChange={(option) => {
+          if (option) onChange(nextProviderConfigWithFieldValue(value, field, option.value));
+        }}
+      >
+        <ComboboxTrigger
+          render={
+            <Button
+              id={inputId}
+              size={size}
+              variant="outline"
+              className={className}
+              aria-label={field.label}
+            />
+          }
+        >
+          <span className="truncate">{label}</span>
+        </ComboboxTrigger>
+        <ComboboxPopup align="start" className="w-80">
+          <ComboboxSearchInput
+            aria-label="Search or enter model ID"
+            placeholder="Search or enter model ID"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <ComboboxList>
+            {(option: ProviderSettingsFormOption) => (
+              <ComboboxItem key={option.value} value={option}>
+                {option.label}
+              </ComboboxItem>
+            )}
+          </ComboboxList>
+        </ComboboxPopup>
+      </Combobox>
+    );
+  }
   return (
     <Select
       value={current}
@@ -716,7 +784,52 @@ function ProviderSettingsFieldRow({
   );
 }
 
-export function ProviderSettingsForm({
+function applyFieldOverrides(
+  fields: ReadonlyArray<ProviderSettingsFieldModel>,
+  overrides: Readonly<Record<string, PluginProviderFieldOverride>> | undefined,
+): ReadonlyArray<ProviderSettingsFieldModel> {
+  if (overrides === undefined) return fields;
+  return fields.map((field) => {
+    const override = overrides[field.key];
+    return override === undefined
+      ? field
+      : {
+          ...field,
+          ...(override.control ? { control: override.control } : {}),
+          ...(override.allowCustom ? { allowCustom: true } : {}),
+          options: override.options,
+          ...(override.description === undefined ? {} : { description: override.description }),
+        };
+  });
+}
+
+export function ProviderSettingsForm(props: ProviderSettingsFormProps) {
+  const Extension = webPlugins.providerSettings.find(
+    (extension) => extension.driverKind === props.definition.driverKind,
+  )?.Component;
+  const fallback = <ProviderSettingsFields {...props} />;
+  return Extension ? (
+    <Suspense fallback={fallback}>
+      <Extension
+        environmentId={props.environmentId}
+        instanceId={props.instanceId}
+        value={props.value}
+        onChange={props.onChange}
+        renderFields={({ overrides, onChange }) => (
+          <ProviderSettingsFields
+            {...props}
+            overrides={overrides}
+            onChange={onChange ?? props.onChange}
+          />
+        )}
+      />
+    </Suspense>
+  ) : (
+    fallback
+  );
+}
+
+function ProviderSettingsFields({
   definition,
   value,
   idPrefix,
@@ -724,8 +837,11 @@ export function ProviderSettingsForm({
   onChange,
   managed,
   environmentId,
-}: ProviderSettingsFormProps) {
-  const fields = deriveProviderSettingsFields(definition, value);
+  overrides,
+}: ProviderSettingsFormProps & {
+  overrides?: Readonly<Record<string, PluginProviderFieldOverride>> | undefined;
+}) {
+  const fields = applyFieldOverrides(deriveProviderSettingsFields(definition, value), overrides);
   const isLocalAcp =
     definition.driverKind === "acpRegistry" &&
     readProviderConfigString(value, "source") === "local";
