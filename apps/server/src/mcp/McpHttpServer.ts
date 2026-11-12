@@ -1,3 +1,4 @@
+import { pluginToolkits } from "../../plugins/installed-mcp.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1239,6 +1240,11 @@ export const layerOrchestratorToolkit = toolkitRegistration(
   OrchestratorHandlers.layer,
 ).pipe(Layer.provide(OrchestratorMcpService.layer), Layer.provide(ThreadMetadataMcpService.layer));
 
+export const layerPluginToolkits = Layer.mergeAll(
+  Layer.empty,
+  ...pluginToolkits.map(({ toolkit, handlers }) => toolkitRegistration(toolkit, handlers)),
+);
+
 export const layerThreadToolkit = toolkitRegistration(ThreadToolkit, ThreadHandlers.layer);
 
 const layerWorktreeToolkitRegistration = toolkitRegistration(
@@ -1317,6 +1323,7 @@ export const layerTools = Layer.mergeAll(
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,
+  layerPluginToolkits,
   layerAttachmentToolkit,
   layerProjectRegistration,
   layerEnvironmentToolkit,
