@@ -10,7 +10,7 @@ import {
 } from "../../src/plugins/host";
 import { workflowEnvironment } from "./state";
 
-function useProjectConnection(environmentId: EnvironmentId) {
+function useProjectConnection(environmentId: EnvironmentId, projectIds?: readonly string[]) {
   const [choice, setChoice] = useState("");
   const connections = useEnvironmentQuery(
     workflowEnvironment.tiximConnections({ environmentId, input: {} }),
@@ -19,7 +19,13 @@ function useProjectConnection(environmentId: EnvironmentId) {
   const selected = available.find((item) => item.id === choice);
   const projects = useEnvironmentQuery(
     selected
-      ? workflowEnvironment.tiximProjects({ environmentId, input: { connectionId: selected.id } })
+      ? workflowEnvironment.tiximProjects({
+          environmentId,
+          input: {
+            connectionId: selected.id,
+            ...(projectIds ? { projectIds: [...projectIds] } : {}),
+          },
+        })
       : null,
   );
   const links = useEnvironmentQuery(
@@ -66,8 +72,8 @@ export function ProjectSettings({
   environmentId: EnvironmentId;
   projectIds: readonly string[];
 }) {
-  const state = useProjectConnection(environmentId);
-  const [target, setTarget] = useState("");
+  const state = useProjectConnection(environmentId, projectIds);
+  const [target, setTarget] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const link = useAtomCommand(workflowEnvironment.tiximProjectLink, { reportFailure: false });
@@ -76,6 +82,7 @@ export function ProjectSettings({
   const linked = state.links.data?.links.find((item) => projectIds.includes(item.projectId));
   const available = state.available;
   const connectionId = state.selected?.id ?? "";
+  const selectedTarget = target ?? state.projects.data?.suggestedProjectId ?? "";
   const run = async (create: boolean) => {
     if (!connectionId || busy) return;
     setBusy(true);
@@ -85,7 +92,7 @@ export function ProjectSettings({
       input: {
         connectionId,
         projectIds: [...projectIds],
-        ...(create ? { create: true } : { tiximProjectId: target }),
+        ...(create ? { create: true } : { tiximProjectId: selectedTarget }),
       },
     });
     setBusy(false);
@@ -131,7 +138,7 @@ export function ProjectSettings({
               value={connectionId}
               onChange={(id) => {
                 state.setChoice(id);
-                setTarget("");
+                setTarget(null);
               }}
             />
           ) : (
@@ -163,7 +170,7 @@ export function ProjectSettings({
               <select
                 aria-label="Existing Tixim project"
                 className="h-8 rounded-md border border-border bg-background px-2 text-sm"
-                value={target}
+                value={selectedTarget}
                 onChange={(event) => setTarget(event.currentTarget.value)}
               >
                 <option value="">Choose a Tixim project</option>
@@ -176,7 +183,7 @@ export function ProjectSettings({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy || !target}
+                disabled={busy || !selectedTarget}
                 onClick={() => void run(false)}
               >
                 Link

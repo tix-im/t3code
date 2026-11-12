@@ -7,6 +7,7 @@ const fixture = vi.hoisted(() => ({
   connections: [{ id: "connection", label: "Local Tixim", available: true }],
   links: [] as Array<Record<string, unknown>>,
   calls: [] as Array<{ command: string; request: unknown }>,
+  suggestedProjectId: undefined as string | undefined,
 }));
 
 vi.mock("../../src/plugins/host", () => ({
@@ -39,7 +40,13 @@ vi.mock("../../src/plugins/host", () => ({
       query === "connections"
         ? { connections: fixture.connections }
         : query === "projects"
-          ? { projects: [{ project_id: "tix-project", name: "Example" }] }
+          ? {
+              projects: [
+                { project_id: "tix-project", name: "Example" },
+                { project_id: "other-project", name: "Other" },
+              ],
+              suggestedProjectId: fixture.suggestedProjectId,
+            }
           : query === "links"
             ? { links: fixture.links }
             : null,
@@ -78,6 +85,7 @@ async function choose(label: string, value: string) {
 it("requires a connection and exposes link, create and import controls", async () => {
   fixture.calls = [];
   fixture.links = [];
+  fixture.suggestedProjectId = undefined;
   await using screen = await render(
     <ProjectSettings environmentId={environmentId} projectIds={["checkout-a", "checkout-b"]} />,
     { router: false },
@@ -122,6 +130,28 @@ it("requires a connection and exposes link, create and import controls", async (
       environmentId,
       input: { connectionId: "connection", tiximProjectId: "tix-project" },
     },
+  });
+});
+
+it("selects the checkout's matching Tixim project and allows a different choice", async () => {
+  fixture.calls = [];
+  fixture.links = [];
+  fixture.suggestedProjectId = "tix-project";
+  await using _screen = await render(
+    <ProjectSettings environmentId={environmentId} projectIds={["checkout-a"]} />,
+    { router: false },
+  );
+  await choose("Tixim connection", "connection");
+  const picker = page.getByRole("combobox", { name: "Existing Tixim project" });
+  await expect.element(picker).toHaveValue("tix-project");
+  await userEvent.click(page.getByRole("button", { name: "Link", exact: true }));
+  expect(fixture.calls[0]).toMatchObject({
+    request: { input: { tiximProjectId: "tix-project" } },
+  });
+  await choose("Existing Tixim project", "other-project");
+  await userEvent.click(page.getByRole("button", { name: "Link", exact: true }));
+  expect(fixture.calls[1]).toMatchObject({
+    request: { input: { tiximProjectId: "other-project" } },
   });
 });
 

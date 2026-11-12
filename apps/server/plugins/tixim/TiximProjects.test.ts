@@ -17,7 +17,7 @@ import {
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { ProcessRunner, ProjectService, ServerSettings } from "../../src/plugins/host.ts";
 import Migration from "./migrations/006_TiximProjectLinks.ts";
-import { importProject, link, listLinks, sync, unlink } from "./TiximProjects.ts";
+import { importProject, link, list, listLinks, sync, unlink } from "./TiximProjects.ts";
 
 it.effect("persists one link per T3 checkout and distinguishes Tixim targets", () =>
   Effect.gen(function* () {
@@ -51,7 +51,7 @@ it.effect("imports attached directories into one linked Tixim group", () =>
       yield* fs.makeDirectory(later);
       yield* fs.makeDirectory(newCheckout);
       const directories = [
-        { path: primary, branch: null, is_primary: true, source: "explicit" },
+        { path: primary, is_primary: true, source: "explicit" },
         { path: attached, branch: null, is_primary: false, source: "explicit" },
       ];
       const commands: string[][] = [];
@@ -191,6 +191,12 @@ it.effect("imports attached directories into one linked Tixim group", () =>
           "Example",
           "Example",
         ]);
+        expect((yield* list("connection", [records.get(primary)!.id])).suggestedProjectId).toBe(
+          "tix-project",
+        );
+        expect(
+          (yield* list("connection", ["unknown-checkout"])).suggestedProjectId,
+        ).toBeUndefined();
         unavailable = true;
         const failedSync = yield* Effect.result(sync("connection"));
         expect(failedSync._tag).toBe("Failure");
