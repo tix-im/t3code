@@ -51,12 +51,13 @@ const setup = Effect.gen(function* () {
 });
 const addLink = (
   daemonId: string,
-  options: { lastState?: string | null; relationship?: string } = {},
+  options: { lastState?: string | null; relationship?: string; parentRunId?: string } = {},
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO tixim_workflow_links (thread_id, daemon_id, run_id, connection_id, source, relationship, payload_json, last_state)
-      VALUES ('thread', ${daemonId}, 'wf-same-run-1234', ${daemonId}, 'automatic', ${options.relationship ?? "owner"}, '{}',
+      VALUES ('thread', ${daemonId}, 'wf-same-run-1234', ${daemonId}, 'automatic', ${options.relationship ?? "owner"},
+        ${options.parentRunId === undefined ? "{}" : `{"parentRunId":"${options.parentRunId}"}`},
         ${options.lastState === undefined ? "running" : options.lastState})`;
   });
 const fixture = () => {
@@ -64,6 +65,8 @@ const fixture = () => {
     runs: [task("one"), task("two")],
     messages: [] as OrchestrationV2ServerCommand[],
     failDispatch: false,
+    rejectDispatch: false,
+    rejected: new Set<string>(),
     shell: {
       activeRunId: null as string | null,
       lineage: { relationshipToParent: "root" },
@@ -86,6 +89,26 @@ const fixture = () => {
         Effect.gen(function* () {
           state.messages.push(command);
           if (state.failDispatch) return yield* Effect.die("transient dispatch failure");
+          // Like the real receipt store, a rejected command id stays rejected.
+          if (state.rejected.has(command.commandId))
+            return yield* new Orchestrator.OrchestratorCommandPreviouslyRejectedError({
+              commandId: command.commandId,
+              commandType: command.type,
+              detail: "rejected",
+            });
+          if (
+            state.rejectDispatch ||
+            (command.type === "message.dispatch" &&
+              command.notification !== undefined &&
+              command.createdBy !== "agent")
+          ) {
+            state.rejected.add(command.commandId);
+            return yield* new Orchestrator.OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              cause: "Notifications must be server- or provider-created queued messages.",
+            });
+          }
           if (command.type === "thread.snooze")
             state.shell.snoozedUntil = DateTime.makeUnsafe(command.snoozedUntil);
           if (command.type === "thread.unsnooze") state.shell.snoozedUntil = null;
@@ -473,15 +496,56 @@ describe("durable workflow waiting", () => {
       expect(yield* sql`SELECT * FROM tixim_workflow_waits`).toHaveLength(1);
     }).pipe(Effect.provide(layer));
   });
-  it.effect("does not wake for untracked runs or attention raised before the wait", () => {
+  it.effect(
+    "does not wake for untracked runs, automatic subworkflows, or attention raised before the wait",
+    () => {
+      const { state, layer } = fixture();
+      state.runs = [
+        task("one", { attention: true }),
+        task("two", { relationship: "untracked" }),
+        task("three", { parentRunId: "wf-parent-run-1234" }),
+      ];
+      return Effect.gen(function* () {
+        yield* setup;
+        const waits = yield* make;
+        expect(yield* waits.wait({ threadId: "thread" })).toMatchObject({ runCount: 1 });
+        state.runs = state.runs.map((run) =>
+          run.daemonId === "three" ? { ...run, state: "failed" } : run,
+        );
+        yield* waits.sweep;
+        expect(state.messages).toHaveLength(0);
+      }).pipe(Effect.provide(layer));
+    },
+  );
+  it.effect("unsnoozes on settle, and drops a rejected wake instead of retrying it", () => {
     const { state, layer } = fixture();
-    state.runs = [task("one", { attention: true }), task("two", { relationship: "untracked" })];
+    const snooze = () => {
+      state.shell.snoozedUntil = DateTime.makeUnsafe("2099-01-01T00:00:00.000Z");
+    };
     return Effect.gen(function* () {
       yield* setup;
       const waits = yield* make;
-      expect(yield* waits.wait({ threadId: "thread" })).toMatchObject({ runCount: 1 });
+      yield* waits.wait({ threadId: "thread" });
+      snooze();
+      state.runs = state.runs.map((r) => ({ ...r, state: "failed" }));
+      state.rejectDispatch = true;
       yield* waits.sweep;
-      expect(state.messages).toHaveLength(0);
+      state.rejectDispatch = false;
+      yield* waits.sweep;
+      const sql = yield* SqlClient.SqlClient;
+      expect(yield* sql`SELECT * FROM tixim_workflow_waits`).toHaveLength(0);
+      expect(state.shell.snoozedUntil).toBeNull();
+      state.runs = [task("one")];
+      yield* waits.wait({ threadId: "thread" });
+      snooze();
+      state.runs = [task("one", { state: "failed" })];
+      yield* waits.sweep;
+      expect(state.messages.slice(-2)).toMatchObject([
+        { createdBy: "agent", text: expect.stringContaining("A workflow needs attention") },
+        { type: "thread.unsnooze" },
+      ]);
+      expect(state.shell.snoozedUntil).toBeNull();
+      expect(yield* sql`SELECT * FROM tixim_workflow_waits`).toHaveLength(0);
     }).pipe(Effect.provide(layer));
   });
 });
@@ -519,15 +583,18 @@ describe("workflow notification queue", () => {
     }).pipe(Effect.provide(layer));
   });
 
-  it.effect("stays silent for untracked runs and a migrated link's first observation", () => {
+  it.effect("stays silent for untracked runs, subworkflows, and a migrated first read", () => {
     const { state, layer } = fixture();
+    state.runs = [task("one"), task("two"), task("three")];
     return Effect.gen(function* () {
       yield* setup;
       yield* addLink("one", { lastState: null });
       yield* addLink("two", { relationship: "untracked" });
+      yield* addLink("three", { parentRunId: "wf-parent-run-1234" });
       const waits = yield* make;
       complete(state, "one");
       complete(state, "two");
+      complete(state, "three");
       yield* waits.sweep;
       yield* TestClock.adjust("1 hour");
       yield* waits.sweep;
@@ -651,6 +718,31 @@ describe("workflow notification queue", () => {
       yield* restarted.sweep;
       expect(state.messages).toHaveLength(3);
       expect(state.messages[2]).toMatchObject({ text: expect.stringContaining("two/") });
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("drops a rejected batch so later updates still wake the thread", () => {
+    const { state, layer } = fixture();
+    return Effect.gen(function* () {
+      yield* setup;
+      yield* addLink("one");
+      yield* addLink("two");
+      const waits = yield* make;
+      complete(state, "one");
+      yield* waits.sweep;
+      yield* TestClock.adjust("30 seconds");
+      state.rejectDispatch = true;
+      yield* waits.sweep;
+      state.rejectDispatch = false;
+      yield* waits.sweep;
+      complete(state, "two");
+      yield* waits.sweep;
+      yield* TestClock.adjust("30 seconds");
+      yield* waits.sweep;
+      expect(state.messages.at(-1)).toMatchObject({
+        createdBy: "agent",
+        text: expect.stringMatching(/^Attached workflows changed state\.\ntwo\//),
+      });
     }).pipe(Effect.provide(layer));
   });
 });
