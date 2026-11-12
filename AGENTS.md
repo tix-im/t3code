@@ -192,6 +192,7 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
 
 ## Taste
 
+- Add only minimal plugin entry points to T3 Code itself. All feature implementation, UI, and integration logic must live in the plugin. If a required extension point does not exist, add the smallest generic hook needed and implement the feature in the plugin. See [Plugin boundary](docs/internals/plugins.md) for the current entry points and migration status.
 - Complexity belongs at the adapter boundary. Orchestration stays pure, UI stays dumb.
 - Client mutations use `createEnvironmentRpcCommand`. Add protected methods to `CLIENT_GUARDED_RPC_SCOPES` in contracts and use the command's `permissionAtom` for UI availability. Grants are checked at execution against the destination environment; the server remains authoritative. Keep raw RPC clients inside `rpc/`, and extend the permission behavior tests when adding a protected method.
 - Server features are services; transports stay thin. A `ws.ts` RPC handler, HTTP route, or MCP tool decodes input, calls one service method, and maps errors. See [Effect services](docs/internals/effect-services.md).

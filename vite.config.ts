@@ -336,15 +336,20 @@ export default defineConfig({
         rules: { "t3code/require-disposable-render": "error" },
       },
       {
-        files: ["apps/web/src/**/*.browser.test.{ts,tsx}"],
+        files: ["apps/web/{src,plugins}/**/*.browser.test.{ts,tsx}"],
         rules: { "t3code/no-frame-waits-in-browser-tests": "error" },
       },
       {
-        files: ["apps/**/src/**", "packages/**/src/**"],
+        files: ["apps/**/src/**", "apps/*/plugins/**", "packages/**/src/**"],
         rules: { "t3code/no-dom-test-environment": "error" },
       },
       {
-        files: ["packages/client-runtime/src/state/**", "apps/{web,mobile,desktop}/src/**"],
+        files: [
+          "packages/client-runtime/src/state/**",
+          "apps/{web,mobile,desktop}/src/**",
+          "apps/{web,mobile,desktop}/plugins/**",
+          "packages/client-runtime/plugins/**",
+        ],
         rules: { "t3code/no-rpc-permission-bypass": ["error", { allowRawClientAccess: false }] },
       },
       {
@@ -396,7 +401,7 @@ export default defineConfig({
         rules: { "t3code/no-raw-mcp-registration": "off" },
       },
       {
-        files: ["apps/web/src/**"],
+        files: ["apps/web/{src,plugins}/**"],
         excludeFiles: ["apps/web/src/components/ui/**"],
         rules: {
           "eslint/no-restricted-imports": [
@@ -404,6 +409,35 @@ export default defineConfig({
             {
               paths: [...RESTRICTED_IMPORT_PATHS, RESTRICTED_PULL_REQUEST_GLYPH_IMPORTS],
               patterns: RESTRICTED_UI_VARIANT_PATTERNS,
+            },
+          ],
+        },
+      },
+      {
+        files: ["apps/web/plugins/**/*.{ts,tsx}"],
+        excludeFiles: ["apps/web/plugins/**/*.test.{ts,tsx}"],
+        rules: {
+          "eslint/no-restricted-imports": [
+            "error",
+            {
+              paths: [...RESTRICTED_IMPORT_PATHS, RESTRICTED_PULL_REQUEST_GLYPH_IMPORTS],
+              patterns: [
+                ...RESTRICTED_UI_VARIANT_PATTERNS,
+                {
+                  group: [
+                    "**/src/**",
+                    "~/**",
+                    "!**/src/plugins",
+                    "!**/src/plugins/api",
+                    "!**/src/plugins/host",
+                    "!~/plugins",
+                    "!~/plugins/api",
+                    "!~/plugins/host",
+                  ],
+                  message:
+                    "Plugins may access the host only through src/plugins/api and src/plugins/host.",
+                },
+              ],
             },
           ],
         },
@@ -450,7 +484,7 @@ export default defineConfig({
         },
       },
       {
-        files: ["apps/server/src/**", "packages/source-control-*/src/server/**"],
+        files: ["apps/server/{src,plugins}/**", "packages/source-control-*/src/server/**"],
         rules: {
           "eslint/no-restricted-imports": [
             "error",
@@ -473,14 +507,14 @@ export default defineConfig({
         },
       },
       {
-        files: ["apps/mobile/src/**"],
+        files: ["apps/mobile/{src,plugins}/**"],
         rules: {
           "t3code/no-mobile-uniwind-theme-escape-hatches": "error",
           "t3code/require-registered-list-scroll": "error",
         },
       },
       {
-        files: ["apps/mobile/src/**"],
+        files: ["apps/mobile/{src,plugins}/**"],
         excludeFiles: [
           "apps/mobile/src/components/ui/AppSymbol.tsx",
           "apps/mobile/src/components/ui/AppSymbol.android.tsx",
@@ -489,13 +523,13 @@ export default defineConfig({
         rules: { "t3code/no-mobile-pull-request-glyph-literals": "error" },
       },
       {
-        files: ["apps/mobile/src/**"],
+        files: ["apps/mobile/{src,plugins}/**"],
         excludeFiles: ["**/*.test.{ts,tsx}"],
         rules: { "t3code/no-ambiguous-detail-navigation": "error" },
       },
       {
         // Raw ResizeObserver state commits miss the paint; observeResize flushes derived layout together.
-        files: ["apps/web/src/**"],
+        files: ["apps/web/{src,plugins}/**"],
         excludeFiles: [
           "apps/web/src/lib/observeResize.ts",
           "**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}",
@@ -503,11 +537,11 @@ export default defineConfig({
         rules: { "t3code/no-raw-resize-observer": "error" },
       },
       {
-        files: ["apps/web/src/**"],
+        files: ["apps/web/{src,plugins}/**"],
         rules: { "shadcn/no-unknown-classes": "error" },
       },
       {
-        files: ["apps/web/src/**"],
+        files: ["apps/web/{src,plugins}/**"],
         rules: { "t3code/no-outset-state-indicators": "error" },
       },
       {
@@ -515,7 +549,7 @@ export default defineConfig({
         rules: { "t3code/max-settings-description-length": "error" },
       },
       {
-        files: ["apps/*/src/**", "packages/*/src/**"],
+        files: ["apps/*/src/**", "apps/*/plugins/**/*.{ts,tsx}", "packages/*/{src,plugins}/**"],
         excludeFiles: [
           "**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}",
           "**/testkit/**",
@@ -526,7 +560,7 @@ export default defineConfig({
         rules: { "t3code/no-em-dash-copy": "error" },
       },
       {
-        files: ["apps/web/src/**"],
+        files: ["apps/web/{src,plugins}/**"],
         rules: { "shadcn/no-raw-colors": "error" },
       },
       {
@@ -535,7 +569,7 @@ export default defineConfig({
         rules: { "shadcn/no-raw-colors": "off" },
       },
       {
-        files: ["apps/web/src/**"],
+        files: ["apps/web/{src,plugins}/**"],
         excludeFiles: ["apps/web/src/components/ui/**"],
         rules: {
           "shadcn/require-static-classes": "error",
@@ -579,7 +613,7 @@ export default defineConfig({
       },
       {
         // React Compiler owns memoization; upstream rules do not ban redundant useMemo/useCallback.
-        files: ["apps/web/src/**/*.{ts,tsx}"],
+        files: ["apps/web/{src,plugins}/**/*.{ts,tsx}"],
         rules: {
           "react/exhaustive-effect-dependencies": "error",
           "react/globals": "error",
@@ -604,8 +638,8 @@ export default defineConfig({
       {
         // ESNext types allow APIs absent from Hermes; restrict shared client code, exempting Node tests.
         files: [
-          "apps/mobile/src/**",
-          "packages/client-runtime/src/**",
+          "apps/mobile/{src,plugins}/**",
+          "packages/client-runtime/{src,plugins}/**",
           "packages/contracts/src/**",
           "packages/shared/src/**",
         ],
@@ -614,16 +648,16 @@ export default defineConfig({
       },
       {
         // Directives hide bailouts from mobile's compiler-coverage check; retain hooks until its allowlist is empty.
-        files: ["apps/mobile/src/**/*.{ts,tsx}"],
+        files: ["apps/mobile/{src,plugins}/**/*.{ts,tsx}"],
         rules: { "t3code/no-manual-memo": ["error", { allowMemoHooks: true }] },
       },
       {
-        files: ["apps/web/src/**", "apps/mobile/src/**", "packages/*/src/**"],
+        files: ["apps/web/{src,plugins}/**", "apps/mobile/{src,plugins}/**", "packages/*/src/**"],
         rules: { "t3code/no-unreasoned-state-sync": "error" },
       },
       {
         // React Compiler caches use* functions only if they call a hook.
-        files: ["apps/web/src/**/*.{ts,tsx}", "apps/mobile/src/**/*.{ts,tsx}"],
+        files: ["apps/web/{src,plugins}/**/*.{ts,tsx}", "apps/mobile/{src,plugins}/**/*.{ts,tsx}"],
         excludeFiles: ["**/*.test.ts", "**/*.test.tsx"],
         rules: { "t3code/no-hookless-use-function": "error" },
       },
@@ -654,6 +688,43 @@ export default defineConfig({
         ],
         rules: {
           "t3code/no-mobile-uniwind-theme-escape-hatches": ["error", { allowUniwindTheme: true }],
+        },
+      },
+      {
+        files: ["apps/{server,desktop,mobile}/plugins/*/**/*.{ts,tsx}"],
+        excludeFiles: ["**/*.test.{ts,tsx}"],
+        rules: {
+          "eslint/no-restricted-imports": [
+            "error",
+            {
+              paths: [...RESTRICTED_IMPORT_PATHS, RESTRICTED_PULL_REQUEST_GLYPH_IMPORTS],
+              patterns: [
+                {
+                  group: [
+                    "**/src/**",
+                    "~/**",
+                    "!**/src/plugins",
+                    "!**/src/plugins/api",
+                    "!**/src/plugins/api.ts",
+                    "!**/src/plugins/host",
+                    "!**/src/plugins/host.ts",
+                  ],
+                  message:
+                    "Plugins may access the host only through src/plugins/api and src/plugins/host.",
+                },
+                {
+                  group: [
+                    "@t3tools/source-control-*/client/*",
+                    "../client/*",
+                    "../../client/*",
+                    "../../../client/*",
+                  ],
+                  message:
+                    "Plugin integrations use shared forge definitions, not UI client entries.",
+                },
+              ],
+            },
+          ],
         },
       },
     ],
