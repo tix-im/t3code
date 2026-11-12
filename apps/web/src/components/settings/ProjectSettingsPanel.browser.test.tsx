@@ -137,7 +137,7 @@ import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { buildSidebarProjectSnapshots } from "../../sidebarProjectGrouping";
 import { ProjectSettingsPanel } from "./ProjectSettingsPanel";
 import { ProjectsSettings } from "./ProjectsSettings";
-import { SettingsScopeProvider } from "./SettingsScopeContext";
+import { SettingsScopeProvider } from "./SettingsScopeProvider";
 import { SettingsScopeNotice } from "./SettingsScopeNotice";
 import { validateSettingsScopeSearch, type SettingsScopeSearch } from "./settingsScope";
 import { retainSettingsScope, validateSettingsRouteSearch } from "./settingsScopeNavigation";

@@ -1,3 +1,4 @@
+import { PluginMarkdown } from "../plugins";
 import { Platform } from "react-native";
 import type { SelectableMarkdownTextProps } from "./SelectableMarkdownText.types";
 
@@ -24,5 +25,18 @@ export function SelectableMarkdownText(props: SelectableMarkdownTextProps) {
     Platform.OS === "android"
       ? { selectionColor, selectionHandleColor, ...props.textStyle }
       : props.textStyle;
-  return <MobileEnrichedMarkdownText {...props} textStyle={textStyle} />;
+  return (
+    <PluginMarkdown
+      markdown={props.markdown}
+      onLinkPress={props.onLinkPress}
+      renderMarkdown={(markdown, onLinkPress) => (
+        <MobileEnrichedMarkdownText
+          {...props}
+          markdown={markdown}
+          onLinkPress={onLinkPress}
+          textStyle={textStyle}
+        />
+      )}
+    />
+  );
 }

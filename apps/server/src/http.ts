@@ -666,6 +666,7 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
       "Cache-Control": cacheControl,
       ...validators(fileInfo),
     };
+    if (staticRelativePath.startsWith("tix-flow/")) headers["Access-Control-Allow-Origin"] = "*";
     const etag = headers.ETag;
     const lastModified = headers["Last-Modified"];
 
@@ -699,6 +700,7 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
       const info = yield* fileSystem.stat(filePath);
       return HttpServerResponse.uint8Array(bytes, {
         headers: {
+          ...headers,
           "Cache-Control": cacheControl,
           ...validators({ ...info, size: ByteSize.bytes(bytes.byteLength) }),
         },

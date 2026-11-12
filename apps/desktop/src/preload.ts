@@ -1,3 +1,4 @@
+import { createPluginBridge } from "../plugins/installed-preload.ts";
 import type {
   DesktopBridge,
   DesktopPreviewAnnotationVoiceEvent,
@@ -184,6 +185,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.SET_CONNECTION_CATALOG_CHANNEL, catalog),
   discoverSshHosts: () => ipcRenderer.invoke(IpcChannels.DISCOVER_SSH_HOSTS_CHANNEL),
   resolveSshHost: (alias) => ipcRenderer.invoke(IpcChannels.RESOLVE_SSH_HOST_CHANNEL, alias),
+  ...createPluginBridge((channel) => ipcRenderer.invoke(channel)),
   ensureSshEnvironment: async (target, options) =>
     unwrapEnsureSshEnvironmentResult(
       await ipcRenderer.invoke(IpcChannels.ENSURE_SSH_ENVIRONMENT_CHANNEL, {

@@ -21,6 +21,7 @@ import {
   isSecretReference,
   type SecretReference,
   withIdleCompaction,
+  isAcpBackedDriverKind,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
@@ -495,13 +496,11 @@ function migrateLegacyProviderSettings(
   };
 }
 
-const ACP_REGISTRY_DRIVER = ProviderDriverKind.make("acpRegistry");
-
 function selectionSupportsTextGeneration(
   settings: ServerSettings,
   selection: ModelSelection,
 ): boolean {
-  return settings.providerInstances[selection.instanceId]?.driver !== ACP_REGISTRY_DRIVER;
+  return !isAcpBackedDriverKind(settings.providerInstances[selection.instanceId]?.driver);
 }
 
 type DriverAllowed = (driver: ProviderDriverKind) => boolean;

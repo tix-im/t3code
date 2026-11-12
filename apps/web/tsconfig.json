@@ -27,6 +27,7 @@
   },
   "include": [
     "src",
+    "plugins",
     "vite",
     "vite.config.ts",
     "vercel.ts",

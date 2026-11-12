@@ -10,6 +10,7 @@ import type {
   ProviderInstanceId,
   ServerProvider,
 } from "@t3tools/contracts";
+import { isAcpBackedDriverKind } from "@t3tools/contracts";
 import { lazy, Suspense, useRef, useState } from "react";
 import { CopyIcon } from "lucide-react";
 
@@ -63,7 +64,7 @@ export function ProviderAuthenticationSection({
     provider.auth.status === "authenticated" ||
     (provider.auth.status === "unknown" && auth?.phase === "succeeded");
   const isDiscovering =
-    provider.driver === "acpRegistry" &&
+    isAcpBackedDriverKind(provider.driver) &&
     !active &&
     !signedIn &&
     !query.error &&
@@ -72,7 +73,7 @@ export function ProviderAuthenticationSection({
     !active &&
     !signedIn &&
     (provider.setup?.canAuthenticate === false ||
-      (provider.driver === "acpRegistry" && auth?.methods?.length === 0));
+      (isAcpBackedDriverKind(provider.driver) && auth?.methods?.length === 0));
   const usesCredentials =
     provider.driver === "antigravity" &&
     (provider.auth.type === "gemini-api-key" || provider.auth.type === "agent-platform");

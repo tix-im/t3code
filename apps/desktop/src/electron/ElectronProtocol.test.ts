@@ -33,6 +33,11 @@ describe("ElectronProtocol", () => {
       const directory = yield* fileSystem.makeTempDirectoryScoped();
       yield* fileSystem.writeFileString(`${directory}/index.html`, "<html>app</html>");
       yield* fileSystem.writeFileString(`${directory}/app.js`, "export default 1;");
+      yield* fileSystem.makeDirectory(`${directory}/tix-flow/assets`, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${directory}/tix-flow/assets/flow.js`,
+        "export default 2;",
+      );
       let handler: ((request: Request) => Promise<Response>) | undefined;
       handleMock.mockImplementation((_scheme, nextHandler) => {
         handler = nextHandler;
@@ -57,6 +62,12 @@ describe("ElectronProtocol", () => {
       const script = yield* request("/app.js?v=1");
       assert.equal(yield* Effect.promise(() => script.text()), "export default 1;");
       assert.include(script.headers.get("content-type") ?? "", "javascript");
+      assert.isNull(script.headers.get("access-control-allow-origin"));
+      const flowScript = yield* request("/tix-flow/assets/flow.js", {
+        headers: { origin: "null" },
+      });
+      assert.equal(flowScript.headers.get("access-control-allow-origin"), "*");
+      assert.equal(yield* Effect.promise(() => flowScript.text()), "export default 2;");
 
       assert.equal((yield* request("/missing.js")).status, 404);
       assert.equal((yield* request("/%2e%2e%2fsecret.txt")).status, 404);

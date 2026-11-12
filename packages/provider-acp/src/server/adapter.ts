@@ -2421,9 +2421,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             mcpServers: mcpContext.servers,
             acpMcpServers: mcpContext.acpServers,
             httpMcpServers: mcpContext.httpServers,
-            ...(mcpContext.processEnvironment === undefined
-              ? {}
-              : { processEnvironment: mcpContext.processEnvironment }),
+            processEnvironment: {
+              ...mcpContext.processEnvironment,
+              T3_THREAD_ORIGIN: input.threadId,
+            },
             ...(direnvEnvironment === undefined ? {} : { direnvEnvironment }),
             ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
             interruptPromptOnCancel: flavor.interruptPromptOnCancel ?? false,

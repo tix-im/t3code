@@ -8,7 +8,7 @@ import "~/index.css";
 import { chooseAudioDestination } from "../../speech/voiceConsent";
 import { useEnvironmentScope, usePreparedConnection } from "../../state/session";
 import { VoiceSettingsPanel } from "./VoiceSettingsPanel";
-import { SettingsScopeProvider } from "./SettingsScopeContext";
+import { SettingsScopeProvider } from "./SettingsScopeProvider";
 
 vi.mock(import("../../state/session"), { spy: true });
 vi.mock("../../env", async (original) => ({

@@ -32,7 +32,7 @@ import * as Layer from "effect/Layer";
 import { Atom, AtomRegistry, AsyncResult } from "effect/reactivity";
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { createCommandPermissions } from "./commandPermissions.ts";
-import { createEnvironmentRpcCommand } from "./runtime.ts";
+import { createPermissionAwareRuntimeCommand, createEnvironmentRpcCommand } from "./runtime.ts";
 import { AVAILABLE_CONNECTION_STATE, BearerConnectionTarget } from "../connection/model.ts";
 import { createPeerLinkEnvironmentAtoms } from "./peerLinks.ts";
 
@@ -608,4 +608,52 @@ it.effect("rejects protected unary and streamed RPCs outside a guarded command",
     expect(streamed._tag).toBe("EnvironmentAuthorizationError");
     expect(writes).toBe(0);
   }),
+);
+
+it.effect("authorizes embedded workflow control streams against the destination session", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      let writes = 0;
+      const client = {
+        [WS_METHODS.tiximFlowWrite]: () =>
+          Stream.fromEffect(
+            Effect.sync(() => {
+              writes++;
+              return "frame";
+            }),
+          ),
+      };
+      const supervisor = {
+        target: { environmentId: env },
+        session: yield* SubscriptionRef.make(Option.some({ client } as unknown as RpcSession)),
+      } as unknown as EnvironmentSupervisor["Service"];
+      const controlRuntime = Atom.runtime(
+        Layer.merge(
+          Layer.succeed(EnvironmentRegistry, {} as EnvironmentRegistry["Service"]),
+          Layer.succeed(EnvironmentSupervisor, supervisor),
+        ),
+      );
+      const command = createPermissionAwareRuntimeCommand(controlRuntime, {
+        label: "test.embedded-control",
+        execute: (_: void) =>
+          runStreamGuarded(WS_METHODS.tiximFlowWrite, {
+            threadId: "thread",
+            connectionId: "connection",
+            daemonId: "daemon",
+            method: "tix.control.v1.WorkflowsControl/CancelWorkflow",
+            body: "",
+          }).pipe(Stream.runCollect),
+      });
+      registry.set(sessions(env), AsyncResult.success(grant(false)));
+      expect((yield* Effect.promise(() => command.run(registry, undefined)))._tag).toBe("Failure");
+      expect(writes).toBe(0);
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(yield* Effect.promise(() => command.run(registry, undefined))).toMatchObject({
+        _tag: "Success",
+        value: ["frame"],
+      });
+      expect(writes).toBe(1);
+    }),
+  ),
 );

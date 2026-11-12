@@ -4,6 +4,7 @@ import {
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
   AuthOrchestrationReadScope,
+  isAcpBackedDriverKind,
 } from "@t3tools/contracts";
 import { useEnvironmentScope, readEnvironmentScope } from "../../state/session";
 import { useAtomValue } from "@effect/atom-react";
@@ -1265,7 +1266,7 @@ function ProviderInstanceRow({
   const allProjects = useProjects();
   const secretSources = useSecretSources(environmentId);
   const acpProjects =
-    mode === "editor" && liveProvider?.driver === "acpRegistry"
+    mode === "editor" && isAcpBackedDriverKind(liveProvider?.driver)
       ? allProjects.filter((project) => project.environmentId === environmentId)
       : undefined;
   const instance = explicitInstance ?? { driver };
@@ -1365,7 +1366,7 @@ function ProviderInstanceRow({
           !readOnly &&
           liveProvider &&
           (liveProvider.setup?.canAuthenticate ||
-            (liveProvider.driver === "acpRegistry" && liveProvider.installed)) ? (
+            (isAcpBackedDriverKind(liveProvider.driver) && liveProvider.installed)) ? (
           <ProviderAuthenticationSection
             key={`${environmentId}:${instanceId}`}
             environmentId={environmentId}

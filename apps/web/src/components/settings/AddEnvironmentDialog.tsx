@@ -1,7 +1,7 @@
 import { pipe } from "effect/Function";
 import { ChevronsLeftRightEllipsisIcon, PlusIcon, TerminalIcon } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import {
   type DesktopDiscoveredSshHost,
   type DesktopSshEnvironmentTarget,
@@ -49,6 +49,7 @@ import {
 } from "~/connection/onboarding";
 import { useEnvironmentQuery } from "~/state/query";
 import { desktopSshHostsStateAtom, filterDiscoveredSshHosts } from "~/state/desktopSshHosts";
+import { webPlugins } from "../../plugins";
 import { type EnvironmentPresentation, useRelayEnvironmentDiscovery } from "~/state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { primaryServerKeybindingsAtom } from "~/state/server";
@@ -66,6 +67,8 @@ import {
 } from "./ConnectionsSettings.logic";
 
 const EMPTY_DISCOVERED_SSH_HOSTS: ReadonlyArray<DesktopDiscoveredSshHost> = [];
+
+type SavedBackendMode = string;
 
 export function AddEnvironmentDialog({
   open,
@@ -109,7 +112,7 @@ export function AddEnvironmentDialog({
     }
     return keys;
   })();
-  const [savedBackendMode, setSavedBackendMode] = useState<"remote" | "ssh">("remote");
+  const [savedBackendMode, setSavedBackendMode] = useState<SavedBackendMode>("remote");
   const [savedBackendHost, setSavedBackendHost] = useState("");
   const [savedBackendPairingCode, setSavedBackendPairingCode] = useState("");
   const [savedBackendSshHost, setSavedBackendSshHost] = useState("");
@@ -144,6 +147,10 @@ export function AddEnvironmentDialog({
   );
   const isLoadingDiscoveredSshHosts = desktopSshHosts.isPending && desktopSshHosts.data === null;
   const discoveredSshHostsError = desktopSshHosts.error;
+  const pluginSetups = webPlugins.connectionSetups.filter((setup) =>
+    setup.available(desktopBridge),
+  );
+  const SelectedSetup = pluginSetups.find((setup) => setup.id === savedBackendMode)?.Component;
   const hasSshHostSuggestionContent =
     desktopBridge !== undefined &&
     (isLoadingDiscoveredSshHosts || unsavedDiscoveredSshHosts.length > 0);
@@ -348,7 +355,7 @@ export function AddEnvironmentDialog({
     setSavedBackendHost(value);
   };
   const renderConnectionModeCard = (input: {
-    readonly mode: "remote" | "ssh";
+    readonly mode: SavedBackendMode;
     readonly title: string;
     readonly description: string;
     readonly icon?: ReactNode;
@@ -635,7 +642,12 @@ export function AddEnvironmentDialog({
         </DialogHeader>
         <DialogPanel>
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div
+              className={cn(
+                "grid gap-3",
+                pluginSetups.length ? "sm:grid-cols-3" : "sm:grid-cols-2",
+              )}
+            >
               {renderConnectionModeCard({
                 mode: "remote",
                 title: "Remote link",
@@ -650,9 +662,35 @@ export function AddEnvironmentDialog({
                     icon: <TerminalIcon aria-hidden className="size-4" />,
                   })
                 : null}
+              {pluginSetups.map((setup) => (
+                <span key={setup.id}>
+                  {renderConnectionModeCard({
+                    mode: setup.id,
+                    title: setup.title,
+                    description: setup.description,
+                    icon: setup.icon,
+                  })}
+                </span>
+              ))}
             </div>
             <AnimatedHeight>
-              {savedBackendMode === "ssh" ? renderSshFields() : renderRemoteModeBody()}
+              {savedBackendMode === "ssh" ? (
+                renderSshFields()
+              ) : SelectedSetup ? (
+                <Suspense fallback={null}>
+                  <SelectedSetup
+                    desktopBridge={desktopBridge}
+                    savedAliases={savedDesktopSshEnvironmentKeys}
+                    busy={isAddingSavedBackend}
+                    onBusyChange={setIsAddingSavedBackend}
+                    onErrorChange={onErrorChange}
+                    error={error}
+                    connectSsh={connectSavedBackendSshTarget}
+                  />
+                </Suspense>
+              ) : (
+                renderRemoteModeBody()
+              )}
             </AnimatedHeight>
           </div>
         </DialogPanel>

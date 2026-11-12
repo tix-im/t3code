@@ -32,7 +32,7 @@ const isSingleOriginDev = process.env.T3CODE_SINGLE_ORIGIN_DEV === "1";
 
 const port = Number(process.env.PORT ?? 5733);
 const explicitHost = process.env.HOST?.trim();
-const host = explicitHost || "localhost";
+const host = explicitHost || "127.0.0.1";
 const configuredWsUrl = isSingleOriginDev ? undefined : process.env.VITE_WS_URL?.trim();
 const configuredHttpUrl = isSingleOriginDev ? undefined : process.env.VITE_HTTP_URL?.trim();
 const configuredRelayUrl = repoEnv.VITE_T3CODE_RELAY_URL?.trim() || "";
@@ -84,8 +84,8 @@ const unitTestProject = {
   extends: true,
   test: {
     name: "unit",
-    include: ["src/**/*.test.{ts,tsx}"],
-    exclude: ["src/**/*.browser.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "plugins/**/*.test.{ts,tsx}"],
+    exclude: ["src/**/*.browser.test.{ts,tsx}", "plugins/**/*.browser.test.{ts,tsx}"],
     hookTimeout: 15_000,
     testTimeout: 15_000,
     setupFiles: [
@@ -126,7 +126,7 @@ const browserTestProject = {
   },
   test: {
     name: "browser",
-    include: ["src/**/*.browser.test.{ts,tsx}"],
+    include: ["src/**/*.browser.test.{ts,tsx}", "plugins/**/*.browser.test.{ts,tsx}"],
     hookTimeout: 15_000,
     testTimeout: 15_000,
     setupFiles: ["./test/browserSetup.ts"],

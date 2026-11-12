@@ -472,3 +472,53 @@ it.effect("denies manual cleanup before the handler without settings permission"
     expect(handled).toBe(false);
   }).pipe(Effect.scoped),
 );
+
+describe("workflow transport authorization", () => {
+  const methods = [WS_METHODS.tiximFlowRead, WS_METHODS.tiximFlowWrite] as const;
+  const group = WsRpcGroup.omit(
+    ...[...WsRpcGroup.requests.keys()].filter(
+      (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, (typeof methods)[number]> =>
+        !(methods as readonly string[]).includes(tag),
+    ),
+  );
+  it.effect("allows read streams but refuses run controls for read-only clients", () =>
+    Effect.gen(function* () {
+      let writes = 0;
+      const client = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.tiximFlowRead, () => Stream.make("read-frame")),
+            group.toLayerHandler(WS_METHODS.tiximFlowWrite, () =>
+              Stream.fromEffect(
+                Effect.sync(() => {
+                  writes++;
+                  return "write-frame";
+                }),
+              ),
+            ),
+            RpcAuthorization.layer([AuthOrchestrationReadScope]),
+          ),
+        ),
+      );
+      const input = {
+        threadId: "thread-a",
+        connectionId: "tix",
+        daemonId: "daemon",
+        method: "tix.control.v1.WorkflowsControl/GetWorkflowDetail",
+        body: "",
+      };
+      expect(yield* client[WS_METHODS.tiximFlowRead](input).pipe(Stream.runCollect)).toEqual([
+        "read-frame",
+      ]);
+      const refused = yield* client[WS_METHODS.tiximFlowWrite]({
+        ...input,
+        method: "tix.control.v1.WorkflowsControl/CancelWorkflow",
+      }).pipe(Stream.runCollect, Effect.flip);
+      expect(refused).toMatchObject({
+        _tag: "EnvironmentAuthorizationError",
+        requiredPermission: AuthOrchestrationOperateScope,
+      });
+      expect(writes).toBe(0);
+    }).pipe(Effect.scoped),
+  );
+});

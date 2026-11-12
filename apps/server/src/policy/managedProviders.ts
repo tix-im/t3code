@@ -24,6 +24,7 @@ import { museClient } from "@t3tools/provider-muse/client";
 import { openCodeClient } from "@t3tools/provider-opencode/client";
 import { piClient } from "@t3tools/provider-pi/client";
 import type { ProviderClientDefinition } from "@t3tools/provider-core/client";
+import { pluginProviderClients } from "../../plugins/installed-provider-clients.ts";
 
 interface KnownDriver {
   readonly label: string;
@@ -51,6 +52,7 @@ const PACKAGED_CLIENTS: ReadonlyArray<ProviderClientDefinition> = [
   openCodeClient,
   piClient,
   acpRegistryClient,
+  ...pluginProviderClients,
 ];
 
 /**
