@@ -1,7 +1,9 @@
 import type { ClientSettings } from "@t3tools/contracts";
 
+import { webPlugins } from "../../plugins";
+
 // Ids are stored in client settings, so never rename one.
-export const THREAD_DETAILS_ITEMS = [
+const CORE_THREAD_DETAILS_ITEMS = [
   { id: "environment", label: "Environment and worktree", defaultVisible: true },
   { id: "openIn", label: "Open in editor", defaultVisible: true },
   { id: "scripts", label: "Project scripts", defaultVisible: true },
@@ -16,8 +18,25 @@ export const THREAD_DETAILS_ITEMS = [
   { id: "context", label: "Context window", defaultVisible: false },
 ] as const;
 
+for (const section of webPlugins.threadDetails) {
+  if (CORE_THREAD_DETAILS_ITEMS.some((item) => item.id === section.id)) {
+    throw new Error(`Plugin section conflicts with a built-in section: ${section.id}`);
+  }
+}
+export const THREAD_DETAILS_ITEMS = [
+  ...CORE_THREAD_DETAILS_ITEMS,
+  ...webPlugins.threadDetails.map(({ id, label, defaultVisible }) => ({
+    id,
+    label,
+    defaultVisible,
+  })),
+];
+
 export type ThreadDetailsItemId = (typeof THREAD_DETAILS_ITEMS)[number]["id"];
-export type ThreadDetailsVisibility = Readonly<Record<ThreadDetailsItemId, boolean>>;
+export type ThreadDetailsVisibility = Readonly<
+  Record<(typeof CORE_THREAD_DETAILS_ITEMS)[number]["id"], boolean> &
+    Record<string, boolean | undefined>
+>;
 
 type ThreadDetailsItem = (typeof THREAD_DETAILS_ITEMS)[number];
 type ThreadDetailsItemSettings = Pick<
@@ -40,7 +59,7 @@ export function resolveThreadDetailsVisibility(
       item.id,
       settings.threadDetailsItems[item.id] ?? defaultVisible(item, settings),
     ]),
-  ) as Record<ThreadDetailsItemId, boolean>;
+  ) as ThreadDetailsVisibility;
 }
 
 /** Stores only choices that differ from the default, so a later default change reaches everyone else. */

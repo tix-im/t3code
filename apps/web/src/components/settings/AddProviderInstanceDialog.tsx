@@ -692,6 +692,7 @@ export function AddProviderInstanceDialog({
                 <SettingsGroup variant="plain" className={cn(wizardStep !== 2 && "hidden")}>
                   <ProviderSettingsForm
                     definition={driverOption}
+                    environmentId={environmentId}
                     value={configDraft}
                     idPrefix={`add-provider-${driver}`}
                     variant="settings"
@@ -699,7 +700,6 @@ export function AddProviderInstanceDialog({
                     managed={
                       driverLocks && { keys: driverLocks.configKeys, reason: driverLocks.reason }
                     }
-                    environmentId={environmentId}
                   />
                 </SettingsGroup>
               ) : !isAcpRegistry && wizardStep === 2 ? (
