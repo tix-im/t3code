@@ -236,6 +236,7 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   if (contents === null) return new Response(null, { status: 404 });
   return new Response(request.method === "HEAD" ? null : new Uint8Array(contents), {
     headers: {
+      ...(pathname.startsWith("/tix-flow/") ? { "access-control-allow-origin": "*" } : {}),
       "content-type": Option.getOrElse(Mime.getType(filePath), () => "application/octet-stream"),
     },
   });
