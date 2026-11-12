@@ -6,6 +6,7 @@ import {
   ProviderDriverKind,
 } from "@t3tools/contracts";
 import { acpRegistryClient } from "@t3tools/provider-acp-registry/client";
+import { pluginProviderClients } from "../plugins/installed-providers.ts";
 import { makeProviderClientRegistry, type ProviderIcon } from "@t3tools/provider-core/client";
 import { modelShortName } from "@t3tools/provider-core/modelShortName";
 import { cursorClient } from "@t3tools/provider-cursor/client";
@@ -57,6 +58,7 @@ export const providerClients = makeProviderClientRegistry([
   museClient,
   piClient,
   acpRegistryClient,
+  ...pluginProviderClients,
 ]);
 
 export function getProviderClient(driver: string | null | undefined) {

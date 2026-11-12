@@ -1,3 +1,4 @@
+import { pluginContract } from "./plugins/installed.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -18,6 +19,18 @@ export const ProviderDriverKind = slugSchema.pipe(Schema.brand("ProviderDriverKi
 export type ProviderDriverKind = typeof ProviderDriverKind.Type;
 
 export const isProviderDriverKind = Schema.is(ProviderDriverKind);
+
+/** Drivers whose instances run an ACP agent on the ACP Registry runtime. */
+const ACP_BACKED_DRIVER_KINDS: ReadonlySet<string> = new Set([
+  "acpRegistry",
+  ...pluginContract.providers
+    .filter((provider) => provider.acpBacked)
+    .map((provider) => provider.driverKind),
+]);
+
+export function isAcpBackedDriverKind(driver: string | null | undefined): boolean {
+  return driver != null && ACP_BACKED_DRIVER_KINDS.has(driver);
+}
 
 export const ProviderInstanceId = slugSchema.pipe(Schema.brand("ProviderInstanceId"));
 export type ProviderInstanceId = typeof ProviderInstanceId.Type;
