@@ -1,6 +1,7 @@
+import { useAtomValue, useAtomSet } from "@effect/atom-react";
 import type { TiximWorkflowRun } from "@t3tools/contracts";
 import { HourglassIcon, WorkflowIcon } from "lucide-react";
-import { useState, type SyntheticEvent } from "react";
+import { useEffect, useState, type SyntheticEvent } from "react";
 import type { PluginSidebarThreadActionProps } from "../../src/plugins/api";
 import {
   cn,
@@ -18,6 +19,7 @@ import {
   useNowMinute,
 } from "../../src/plugins/host";
 import { FlowFrame } from "./FlowFrame";
+import { sidebarWorkflowSelectionAtom } from "./sidebarWorkflowSelection";
 import { workflowOverviewAtom } from "./sidebarThreads";
 import { DialogRunTitle } from "./ThreadWorkflowsControl";
 import { WorkflowTally } from "./WorkflowTally";
@@ -46,7 +48,15 @@ export function WorkflowsRowAction({
   onOpenChange,
 }: PluginSidebarThreadActionProps) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<TiximWorkflowRun | null>(null);
+  const selectionAtom = sidebarWorkflowSelectionAtom(environmentId)(threadId);
+  const selected = useAtomValue(selectionAtom);
+  const setSelected = useAtomSet(selectionAtom);
+  const active = open || selected !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the parent row controls visible when the hover card opens a workflow dialog
+  useEffect(() => {
+    onOpenChange(active);
+    return () => onOpenChange(false);
+  }, [active, onOpenChange]);
   const overview = useEnvironmentQuery(workflowOverviewAtom(environmentId));
   const nowSeconds = Date.parse(`${useNowMinute()}:00Z`) / 1000;
   const thread = overview.data?.threads.find((entry) => entry.threadId === threadId);
@@ -54,7 +64,6 @@ export function WorkflowsRowAction({
   const change = (popover: boolean, run: TiximWorkflowRun | null) => {
     setOpen(popover);
     setSelected(run);
-    onOpenChange(popover || run !== null);
   };
   if (runs.length === 0) return null;
   return (

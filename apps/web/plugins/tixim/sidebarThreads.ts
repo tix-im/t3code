@@ -8,6 +8,8 @@ import {
 } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { WorkflowIcon } from "lucide-react";
+import { createElement } from "react";
+import { SidebarWorkflowItems } from "./SidebarWorkflowItems";
 import type { PluginSidebarThread } from "../../src/plugins/api";
 import { workflowEnvironment } from "./state";
 import {
@@ -45,7 +47,10 @@ const describedThreads = new WeakMap<
   ReadonlyMap<string, PluginSidebarThread>
 >();
 
-function describeWorkflowThread(thread: TiximThreadWorkflows): PluginSidebarThread {
+function describeWorkflowThread(
+  environmentId: EnvironmentId,
+  thread: TiximThreadWorkflows,
+): PluginSidebarThread {
   const waiting = thread.runs.filter((run) => thread.waitingOn.includes(workflowRunKey(run)));
   const counts = workflowRunCounts(thread.runs)
     .map(({ count, label }) => `${count} ${label}`)
@@ -60,6 +65,20 @@ function describeWorkflowThread(thread: TiximThreadWorkflows): PluginSidebarThre
           ? `Waiting on ${waiting.length} of ${thread.runs.length} workflows`
           : `${thread.runs.length === 1 ? "1 workflow" : `${thread.runs.length} workflows`}: ${counts}`,
     },
+    rowContent:
+      waiting.length > 0
+        ? createElement(SidebarWorkflowItems, {
+            environmentId,
+            threadId: ThreadId.make(thread.threadId),
+            runs: waiting,
+          })
+        : null,
+    hoverContent: createElement(SidebarWorkflowItems, {
+      environmentId,
+      threadId: ThreadId.make(thread.threadId),
+      runs: waiting,
+      indented: true,
+    }),
     items: waiting.map((run) => {
       const glyph = workflowStateGlyph(run.state);
       return {
@@ -83,7 +102,7 @@ export function useSidebarWorkflowThreads(
       for (const thread of overview?.threads ?? [])
         next.set(
           scopedThreadKey(scopeThreadRef(environmentId, ThreadId.make(thread.threadId))),
-          describeWorkflowThread(thread),
+          describeWorkflowThread(environmentId, thread),
         );
     threads = next;
     describedThreads.set(overviews, threads);
