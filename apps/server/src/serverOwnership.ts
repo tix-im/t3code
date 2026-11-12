@@ -11,8 +11,10 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Runtime from "effect/Runtime";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
+import packageJson from "../package.json" with { type: "json" };
 import {
   BOOT_SERVICE_LAUNCHD_LABEL,
   BOOT_SERVICE_PLIST_FILE,
@@ -28,6 +30,14 @@ import {
   serviceStateActiveVersion,
 } from "./cloud/serviceProtocol.ts";
 import * as ProcessRunner from "./processRunner.ts";
+import {
+  HANDOFF_POLL_MS,
+  HANDOFF_WAIT_MS,
+  NIX_STORE_PATH_ENV,
+  listenForServerHandoff,
+  requestServerHandoff,
+  type ServerHandoffPolicy,
+} from "./serverHandoff.ts";
 import {
   clearPersistedServerRuntimeState,
   isProcessAlive,
@@ -223,14 +233,17 @@ export const holdServerOwnershipLock = Effect.fn("holdServerOwnershipLock")(func
 /** Hold an exclusive lock on the state directory until the scope closes. */
 export const acquireServerOwnership = Effect.fn("acquireServerOwnership")(function* (
   statePath: string,
+  handoffPolicy?: ServerHandoffPolicy,
 ) {
   const stateDir = NodePath.dirname(statePath);
   const random = yield* SecureRandom.SecureRandom;
   const ownerId = yield* random
     .uuidV4()
     .pipe(Effect.mapError((cause) => new ServerOwnershipError({ stateDir, cause })));
+  const environment = yield* HostProcess.Environment;
+  const ownStorePath = environment[NIX_STORE_PATH_ENV];
   const lockPath = ownershipLockPath(stateDir);
-  const lock = yield* Effect.acquireRelease(openOwnershipLock(stateDir), ({ db }) =>
+  const acquireLock = Effect.acquireRelease(openOwnershipLock(stateDir), ({ db }) =>
     readPersistedServerRuntimeState(statePath).pipe(
       Effect.flatMap((state) =>
         Option.isSome(state) && state.value.ownerId === ownerId
@@ -240,6 +253,35 @@ export const acquireServerOwnership = Effect.fn("acquireServerOwnership")(functi
       Effect.ignore({ log: true }),
       Effect.ensuring(Effect.sync(() => db.close())),
     ),
+  );
+  // Outside acquireRelease so a stop signal can interrupt the wait for the old owner.
+  const lock = yield* acquireLock.pipe(
+    Effect.catchTags({
+      ServerAlreadyRunningError: Effect.fnUntraced(function* (busy) {
+        if (ownStorePath === undefined) return yield* busy;
+        const reply = yield* requestServerHandoff({
+          stateDir,
+          storePath: ownStorePath,
+          serverVersion: packageJson.version,
+        });
+        if (!reply?.accepted) {
+          if (reply !== undefined) {
+            yield* Effect.logWarning("the running server refused the Nix handoff", {
+              reason: reply.reason,
+            });
+          }
+          return yield* busy;
+        }
+        const acquired = yield* acquireLock.pipe(
+          Effect.retry({
+            while: (error) => error._tag === "ServerAlreadyRunningError",
+            schedule: Schedule.spaced(Duration.millis(HANDOFF_POLL_MS)),
+          }),
+          Effect.timeoutOption(Duration.millis(HANDOFF_WAIT_MS)),
+        );
+        return Option.isSome(acquired) ? acquired.value : yield* busy;
+      }),
+    }),
   );
 
   const previous = yield* readPersistedServerRuntimeState(statePath).pipe(
@@ -255,6 +297,15 @@ export const acquireServerOwnership = Effect.fn("acquireServerOwnership")(functi
   const olderServiceHome = yield* olderBootServiceHome(stateDir);
   if (olderServiceHome !== undefined) {
     return yield* new OlderBootServiceError({ baseDir: olderServiceHome });
+  }
+  // A service launcher would restart a yielded server into the new owner's lock.
+  if (ownStorePath !== undefined && environment[SERVICE_LAUNCHER_CONTEXT_ENV] === undefined) {
+    yield* listenForServerHandoff({
+      stateDir,
+      ownStorePath,
+      ownVersion: packageJson.version,
+      ...(handoffPolicy === undefined ? {} : { policy: handoffPolicy }),
+    });
   }
 
   yield* Effect.gen(function* () {

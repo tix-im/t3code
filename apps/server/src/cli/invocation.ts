@@ -63,6 +63,7 @@ export const resolveEntryPath = Effect.gen(function* () {
 });
 
 export const resolveServerInstallation = Effect.gen(function* () {
+  if (yield* HostProcess.isNixManaged) return { kind: "nix" } satisfies ServerInstallation;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;

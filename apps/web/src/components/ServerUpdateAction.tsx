@@ -345,6 +345,14 @@ export function ServerUpdateAction({
     );
   }
 
+  if (installation?.kind === "nix") {
+    return (
+      <span className="text-muted-foreground text-xs">
+        Installed by Nix. Update its flake on that machine.
+      </span>
+    );
+  }
+
   if (refusedCrossing({ selfUpdate, targetVersion, channel }, serverVersion)) {
     return <CrossTrackNote />;
   }

@@ -30,6 +30,7 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
 import { withUntracedRequests } from "./http.ts";
+import { launcherIsGone } from "./launcherWatch.ts";
 import * as ServerHttp from "./http.ts";
 import {
   guardHttpResponseWriteErrors,
@@ -861,7 +862,12 @@ const layerMakeServer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     // Before anything opens the database: one server per T3 home.
-    const ownership = yield* ServerOwnership.acquireServerOwnership(config.serverRuntimeStatePath);
+    const ownership = yield* ServerOwnership.acquireServerOwnership(config.serverRuntimeStatePath, {
+      refusal: () =>
+        config.desktopBootstrapToken !== undefined && !launcherIsGone()
+          ? "an open desktop app owns this server; quit it first"
+          : undefined,
+    });
     const activation = yield* Deferred.make<void>();
     const awaitActivation = Deferred.await(activation);
     const layerActivation = Layer.succeed(ServerActivation.ServerActivation, awaitActivation);

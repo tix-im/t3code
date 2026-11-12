@@ -126,3 +126,12 @@ export const UserId = Context.Reference<number | undefined>("@t3tools/shared/Hos
 });
 
 export const isWindows = Effect.map(Platform, (platform) => platform === "win32");
+
+export const NIX_MANAGED_UPDATE_MESSAGE =
+  "This T3 Code is installed by Nix. Update the flake that provides it, then rebuild.";
+
+/** Checks T3's own entry point: Nix's node also runs unmanaged `npx t3` installs. */
+export const isNixManaged = Effect.gen(function* () {
+  const entry = (yield* IsExecutable) ? yield* ExecutablePath : (yield* Arguments)[1];
+  return entry?.startsWith("/nix/store/") === true;
+});

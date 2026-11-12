@@ -21,6 +21,8 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeOS from "node:os";
 
+import { NIX_STORE_PATH_ENV } from "./serverHandoff.ts";
+
 function logPathHydrationWarning(message: string, error?: unknown): void {
   process.stderr.write(
     `[server] ${message} ${error instanceof Error ? error.message : (error ?? "")}\n`,
@@ -50,7 +52,11 @@ function applyLoginShellEnvironment(
   fallbackPath?: string,
 ): void {
   const shellPath = shellEnvironment.PATH;
-  const mergedPath = mergePathEntries(shellPath ?? fallbackPath, env.PATH, platform);
+  const hydratedPath = shellPath ?? fallbackPath;
+  // The Nix wrapper's PATH pins packaged harnesses; a login shell must not shadow them.
+  const mergedPath = env[NIX_STORE_PATH_ENV]
+    ? mergePathEntries(env.PATH, hydratedPath, platform)
+    : mergePathEntries(hydratedPath, env.PATH, platform);
   if (mergedPath) {
     env.PATH = mergedPath;
   }

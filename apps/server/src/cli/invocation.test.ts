@@ -225,6 +225,22 @@ it.layer(NodeServices.layer)("manual server installation ownership", (it) => {
     }),
   );
 
+  it.effect("reports a Nix install from its entry point, not from the node running it", () =>
+    Effect.gen(function* () {
+      const installationFor = (entry: string) =>
+        resolveServerInstallation.pipe(
+          Effect.provideService(HostProcess.Arguments, ["/nix/store/abc-node/bin/node", entry]),
+          Effect.provideService(HostProcess.ExecutablePath, "/nix/store/abc-node/bin/node"),
+          Effect.provideService(HostProcess.IsExecutable, false),
+          Effect.provideService(HostProcess.Environment, {}),
+        );
+      expect(yield* installationFor("/nix/store/abc-t3/apps/server/dist/bin.mjs")).toEqual({
+        kind: "nix",
+      });
+      expect(yield* installationFor("/opt/t3/missing/bin.mjs")).toBeNull();
+    }),
+  );
+
   it.effect("requires the npm prefix's bin to point to the running package", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

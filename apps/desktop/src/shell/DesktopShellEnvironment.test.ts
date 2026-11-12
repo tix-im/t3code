@@ -482,6 +482,24 @@ describe("DesktopShellEnvironment", () => {
     }),
   );
 
+  it.effect("keeps a Nix wrapper's PATH ahead of the login shell PATH", () =>
+    Effect.gen(function* () {
+      const env: NodeJS.ProcessEnv = {
+        SHELL: "/bin/bash",
+        PATH: "/nix/store/claude/bin:/usr/bin",
+        T3CODE_NIX_STORE_PATH: "/nix/store/build-t3code-0.1.5",
+      };
+
+      yield* runShellEnvironment({
+        env,
+        platform: "linux",
+        handler: () => envOutput({ PATH: "/home/test/.local/bin:/usr/bin" }),
+      });
+
+      assert.equal(env.PATH, "/nix/store/claude/bin:/usr/bin:/home/test/.local/bin");
+    }),
+  );
+
   it.effect("hydrates PATH and missing SSH_AUTH_SOCK from the login shell on macOS", () =>
     Effect.gen(function* () {
       const env: NodeJS.ProcessEnv = {

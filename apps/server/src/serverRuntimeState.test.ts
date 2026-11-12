@@ -7,12 +7,14 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Runtime from "effect/Runtime";
+import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vite-plus/test";
@@ -21,6 +23,7 @@ import { renderBootServicePlist, renderBootServiceUnit } from "./cloud/bootServi
 import { ServiceLauncherHostProcess } from "./cloud/serviceLauncherClient.ts";
 import { SERVICE_LAUNCHER_CONTEXT_ENV } from "./cloud/serviceProtocol.ts";
 import * as ProcessRunner from "./processRunner.ts";
+import * as ServerHandoff from "./serverHandoff.ts";
 import * as ServerOwnership from "./serverOwnership.ts";
 import * as ServerRuntimeState from "./serverRuntimeState.ts";
 
@@ -151,6 +154,88 @@ describe("server ownership", () => {
     config: { host: undefined, devUrl: undefined },
     port: 3773,
   });
+
+  const nixBuild = (letter: string) => `/nix/store/${letter.repeat(32)}-t3code-0.1.5`;
+
+  it("yields only to a different, installed, non-older T3 Code build", () => {
+    const refusal = (storePath: string, serverVersion: string, isInstalled = true) =>
+      ServerHandoff.handoffRefusal({
+        request: { storePath, serverVersion },
+        ownStorePath: nixBuild("a"),
+        ownVersion: "0.1.5",
+        isInstalled: () => isInstalled,
+      });
+    assert.isUndefined(refusal(nixBuild("b"), "0.1.5"));
+    assert.isUndefined(refusal(nixBuild("b"), "0.1.6"));
+    assert.equal(refusal(nixBuild("a"), "0.1.5"), "this build is already running");
+    assert.match(refusal(nixBuild("b"), "0.1.4") ?? "", /downgrade/);
+    assert.equal(refusal(nixBuild("b"), "0.1.5", false), "the new build has no server entry");
+    assert.equal(refusal("/tmp/evil/t3code-0.1.5", "0.1.5"), "not a T3 Code store path");
+    assert.equal(refusal(`${nixBuild("b")}/../../../tmp`, "0.1.5"), "not a T3 Code store path");
+  });
+
+  it.live("hands a state directory to a different Nix build, but not to the same one", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-owner-handoff-" });
+      const statePath = path.join(root, "server-runtime.json");
+      const ownerScope = yield* Scope.make();
+      const yieldRequested = Promise.withResolvers<void>();
+      yield* Effect.promise(() => yieldRequested.promise).pipe(
+        Effect.andThen(Scope.close(ownerScope, Exit.void)),
+        Effect.forkScoped,
+      );
+      let yielded = 0;
+      const acquireAs = (storePath: string) =>
+        ServerOwnership.acquireServerOwnership(statePath, {
+          isInstalled: () => true,
+          yieldServer: () => {
+            yielded += 1;
+            yieldRequested.resolve();
+          },
+        }).pipe(
+          Effect.provideService(HostProcess.Environment, {
+            [ServerHandoff.NIX_STORE_PATH_ENV]: storePath,
+          }),
+        );
+
+      yield* acquireAs(nixBuild("a")).pipe(Scope.provide(ownerScope));
+      const sameBuild = yield* Effect.scoped(acquireAs(nixBuild("a"))).pipe(Effect.flip);
+      assert.equal(sameBuild._tag, "ServerAlreadyRunningError");
+      assert.equal(yielded, 0);
+
+      yield* Effect.scoped(acquireAs(nixBuild("b")));
+      assert.equal(yielded, 1);
+    }).pipe(Effect.provide(layerOwnership)),
+  );
+
+  it.live("keeps a state directory while its owner refuses the handoff", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-owner-refuse-" });
+      const statePath = path.join(root, "server-runtime.json");
+      let yielded = 0;
+      const withBuild = Effect.provideService(HostProcess.Environment, {
+        [ServerHandoff.NIX_STORE_PATH_ENV]: nixBuild("a"),
+      });
+      yield* ServerOwnership.acquireServerOwnership(statePath, {
+        refusal: () => "an open desktop app owns this server",
+        yieldServer: () => {
+          yielded += 1;
+        },
+      }).pipe(withBuild);
+      const refused = yield* ServerOwnership.acquireServerOwnership(statePath).pipe(
+        Effect.provideService(HostProcess.Environment, {
+          [ServerHandoff.NIX_STORE_PATH_ENV]: nixBuild("b"),
+        }),
+        Effect.flip,
+      );
+      assert.equal(refused._tag, "ServerAlreadyRunningError");
+      assert.equal(yielded, 0);
+    }).pipe(Effect.scoped, Effect.provide(layerOwnership)),
+  );
 
   it.effect("lets only one of two racing starts own a state directory", () =>
     Effect.gen(function* () {

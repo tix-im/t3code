@@ -117,6 +117,35 @@ effectIt.effect("waits longer for only one hung login shell", () =>
   ),
 );
 
+effectIt.effect("keeps a Nix wrapper's PATH ahead of the login shell PATH", () =>
+  Effect.acquireUseRelease(
+    Effect.sync(() =>
+      vi
+        .spyOn(NodeChildProcess, "execFileSync")
+        .mockReturnValue(
+          "__T3CODE_ENV_PATH_START__\n/home/me/.local/bin:/usr/bin\n__T3CODE_ENV_PATH_END__\n",
+        ),
+    ),
+    () =>
+      Effect.gen(function* () {
+        const env: NodeJS.ProcessEnv = {
+          SHELL: "/bin/bash",
+          PATH: "/nix/store/claude/bin:/usr/bin",
+          T3CODE_NIX_STORE_PATH: "/nix/store/build-t3code-0.1.5",
+        };
+
+        yield* fixPath().pipe(
+          Effect.provideService(HostProcess.Platform, "linux"),
+          Effect.provideService(HostProcess.Environment, env),
+          Effect.provide(NodeServices.layer),
+        );
+
+        assert.equal(env.PATH, "/nix/store/claude/bin:/usr/bin:/home/me/.local/bin");
+      }),
+    (probe) => Effect.sync(() => probe.mockRestore()),
+  ),
+);
+
 effectIt.effect("keeps mise's PATH record with the login shell PATH", () =>
   Effect.acquireUseRelease(
     Effect.sync(() =>
