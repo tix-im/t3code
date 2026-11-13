@@ -26,6 +26,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { toastManager } from "../ui/toast";
+import { projectPickerLabels } from "./AcpSessionManagementSection.logic";
 import { SettingsRow } from "./settingsLayout";
 
 interface AcpSessionProject {
@@ -109,6 +110,7 @@ function InstanceSessionManagement(
   const canOperate = useEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope);
   const canRead = useEnvironmentScope(props.environmentId, AuthOrchestrationReadScope);
   const { projectId } = props;
+  const projectLabels = projectPickerLabels(props.projects);
   const projectGeneration = useRef(0);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Late continuations must not act on a replaced project scope.
   useLayoutEffect(() => {
@@ -426,13 +428,13 @@ function InstanceSessionManagement(
                 >
                   <SelectTrigger aria-label="Project for ACP sessions" className="w-40" size="sm">
                     <SelectValue>
-                      {props.projects.find((project) => project.id === projectId)?.title}
+                      {projectId === null ? null : projectLabels.get(projectId)}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
                     {props.projects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
-                        {project.title}
+                        {projectLabels.get(project.id)}
                       </SelectItem>
                     ))}
                   </SelectPopup>
@@ -557,13 +559,13 @@ function InstanceSessionManagement(
             >
               <SelectTrigger aria-label="Project for ACP providers" className="min-w-48" size="xs">
                 <SelectValue>
-                  {props.projects.find((project) => project.id === projectId)?.title}
+                  {projectId === null ? null : projectLabels.get(projectId)}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup>
                 {props.projects.map((project) => (
                   <SelectItem key={project.id} value={project.id}>
-                    {project.title}
+                    {projectLabels.get(project.id)}
                   </SelectItem>
                 ))}
               </SelectPopup>
