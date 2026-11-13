@@ -21,7 +21,22 @@ export function applyDirenvEnvironment(
     if (value === null) delete next[name];
     else next[name] = value;
   }
-  return next;
+  return pinPathEntries(next, serverEnv[PINNED_PATH_ENV]);
+}
+
+/**
+ * PATH entries a packager pins ahead of any project's, such as the harnesses a
+ * Nix build ships. A project dev shell must not shadow them, nor unload them
+ * when direnv reverts the environment the server was started from.
+ */
+export const PINNED_PATH_ENV = "T3CODE_PINNED_PATH";
+
+function pinPathEntries(env: NodeJS.ProcessEnv, pinned: string | undefined): NodeJS.ProcessEnv {
+  const entries = pinned?.split(":").filter((entry) => entry.length > 0) ?? [];
+  if (entries.length === 0) return env;
+  const pinnedSet = new Set(entries);
+  const rest = (env.PATH ?? "").split(":").filter((entry) => entry && !pinnedSet.has(entry));
+  return { ...env, PATH: [...entries, ...rest].join(":") };
 }
 
 // ProviderSessionManagerV2 loads the diff before opening a session; adapters
