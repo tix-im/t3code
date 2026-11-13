@@ -292,4 +292,20 @@ describe("applyDirenvEnvironment", () => {
       ),
     ).toEqual({ ...instanceEnv, FOO: "bar" });
   });
+
+  it("keeps pinned PATH entries ahead of the project's", () => {
+    const pinnedEnv = {
+      ...serverEnv,
+      PATH: "/nix/store/harness/bin:/usr/bin",
+      T3CODE_PINNED_PATH: "/nix/store/harness/bin",
+    };
+
+    expect(
+      DirenvEnvironment.applyDirenvEnvironment(
+        pinnedEnv,
+        { PATH: "/nix/store/devshell/bin:/usr/bin" },
+        pinnedEnv,
+      ).PATH,
+    ).toBe("/nix/store/harness/bin:/nix/store/devshell/bin:/usr/bin");
+  });
 });
