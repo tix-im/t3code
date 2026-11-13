@@ -31,7 +31,10 @@ export function applyDirenvEnvironment(
  */
 export const PINNED_PATH_ENV = "T3CODE_PINNED_PATH";
 
-function pinPathEntries(env: NodeJS.ProcessEnv, pinned: string | undefined): NodeJS.ProcessEnv {
+export function pinPathEntries(
+  env: NodeJS.ProcessEnv,
+  pinned: string | undefined,
+): NodeJS.ProcessEnv {
   const entries = pinned?.split(":").filter((entry) => entry.length > 0) ?? [];
   if (entries.length === 0) return env;
   const pinnedSet = new Set(entries);

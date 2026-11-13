@@ -64,6 +64,45 @@ effectIt.effect("hydrates PATH when the desktop handoff is absent", () =>
   ),
 );
 
+effectIt.effect("puts pinned harness PATH entries first even when PATH lost them", () =>
+  Effect.acquireUseRelease(
+    Effect.sync(() =>
+      vi
+        .spyOn(NodeChildProcess, "execFileSync")
+        .mockReturnValue("__T3CODE_ENV_PATH_START__\n/opt/tools/bin\n__T3CODE_ENV_PATH_END__\n"),
+    ),
+    () =>
+      Effect.gen(function* () {
+        const pinned = "/nix/store/claude/bin:/nix/store/codex/bin";
+        // A dev shell replaced PATH; only the pinned variable survived.
+        const hydrated: NodeJS.ProcessEnv = {
+          SHELL: "/bin/bash",
+          PATH: "/usr/bin",
+          T3CODE_PINNED_PATH: pinned,
+        };
+        const prepared: NodeJS.ProcessEnv = {
+          PATH: "/usr/bin:/nix/store/codex/bin",
+          T3CODE_PINNED_PATH: pinned,
+        };
+
+        yield* fixPath().pipe(
+          Effect.provideService(HostProcess.Platform, "linux"),
+          Effect.provideService(HostProcess.Environment, hydrated),
+          Effect.provide(NodeServices.layer),
+        );
+        yield* fixPath({ shellEnvironmentPrepared: true }).pipe(
+          Effect.provideService(HostProcess.Platform, "linux"),
+          Effect.provideService(HostProcess.Environment, prepared),
+          Effect.provide(NodeServices.layer),
+        );
+
+        assert.equal(hydrated.PATH, `${pinned}:/opt/tools/bin:/usr/bin`);
+        assert.equal(prepared.PATH, `${pinned}:/usr/bin`);
+      }),
+    (probe) => Effect.sync(() => probe.mockRestore()),
+  ),
+);
+
 const timedOut = (file: string) =>
   Object.assign(new Error(`spawnSync ${file} ETIMEDOUT`), { code: "ETIMEDOUT" });
 

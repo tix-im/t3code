@@ -1,3 +1,4 @@
+import { PINNED_PATH_ENV, pinPathEntries } from "@t3tools/provider-core/server/direnvEnvironment";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   buildEnvironmentCaptureCommand,
@@ -43,6 +44,11 @@ function readSlowLoginShellEnvironment(shell: string): Partial<Record<string, st
   );
 }
 
+function pinPackagedPath(env: NodeJS.ProcessEnv): void {
+  const { PATH } = pinPathEntries(env, env[PINNED_PATH_ENV]);
+  if (PATH !== undefined) env.PATH = PATH;
+}
+
 function applyLoginShellEnvironment(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
@@ -54,6 +60,7 @@ function applyLoginShellEnvironment(
   if (mergedPath) {
     env.PATH = mergedPath;
   }
+  pinPackagedPath(env);
   if (shellPath && shellEnvironment.__MISE_DIFF) {
     env.__MISE_DIFF = shellEnvironment.__MISE_DIFF;
   }
@@ -145,7 +152,10 @@ export const fixPath = Effect.fn("fixPath")(function* (options?: {
       }),
     ),
   );
-  if (options?.shellEnvironmentPrepared === true) return;
+  if (options?.shellEnvironmentPrepared === true) {
+    pinPackagedPath(env);
+    return;
+  }
   yield* Effect.sync(() => hydratePosixPath(env, platform)).pipe(
     Effect.catchDefect((defect) =>
       Effect.sync(() => {
