@@ -1299,11 +1299,14 @@ export const enrichProviderSnapshotWithVersionAdvisory = Effect.fn(
     readonly enableProviderUpdateChecks: boolean | undefined;
   },
 ) {
+  const nixManaged = yield* HostProcess.isNixManaged;
   const capabilities =
-    maintenanceCapabilities ?? makeManualProviderMaintenanceCapabilities(snapshot.driver);
+    (nixManaged ? undefined : maintenanceCapabilities) ??
+    makeManualProviderMaintenanceCapabilities(snapshot.driver);
   const currentVersion =
     snapshot.installedVersion !== undefined ? snapshot.installedVersion : snapshot.version;
   const shouldResolveLatestVersion =
+    !nixManaged &&
     options?.enableProviderUpdateChecks !== false &&
     snapshot.enabled &&
     snapshot.installed &&

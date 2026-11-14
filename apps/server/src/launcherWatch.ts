@@ -7,6 +7,8 @@ const DEFAULT_POLL_INTERVAL = Duration.seconds(2);
 // Capture before config and bootstrap reads to detect launcher loss during startup.
 const startupParentPid = process.ppid;
 
+export const launcherIsGone = (): boolean => process.ppid !== startupParentPid;
+
 /**
  * Any parent change signals launcher loss, including adoption by a Linux subreaper;
  * otherwise an orphan backend keeps its ownership lock and blocks replacement launches.

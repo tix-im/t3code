@@ -7,6 +7,7 @@ import {
   type ServerProviderUpdatedPayload,
   type ServerProviderUpdateState,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -435,7 +436,7 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
       instanceId,
       provider,
     );
-    const update = capabilities.update;
+    const update = (yield* HostProcess.isNixManaged) ? null : capabilities.update;
     if (!update) {
       return yield* new ServerProviderUpdateError({
         provider,

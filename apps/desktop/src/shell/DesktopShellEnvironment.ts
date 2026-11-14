@@ -86,6 +86,7 @@ export class DesktopShellEnvironment extends Context.Service<
   }
 >()("@t3tools/desktop/shell/DesktopShellEnvironment") {}
 
+const NIX_STORE_PATH_ENV = "T3CODE_NIX_STORE_PATH";
 const LOGIN_SHELL_ENV_NAMES = [
   "PATH",
   "DBUS_SESSION_BUS_ADDRESS",
@@ -480,10 +481,17 @@ const installPosixEnvironment = Effect.fn("desktop.shellEnvironment.installPosix
       config.platform === "darwin" && !shellEnvironment.PATH
         ? yield* readLaunchctlPath(config.env)
         : Option.none<string>();
-    const mergedPath = mergePaths(config.platform, [
-      trimNonEmpty(shellEnvironment.PATH).pipe(Option.orElse(() => launchctlPath)),
-      readEnvPath(config.env),
-    ]);
+    const hydratedPath = trimNonEmpty(shellEnvironment.PATH).pipe(
+      Option.orElse(() => launchctlPath),
+    );
+    const inheritedPath = readEnvPath(config.env);
+    // The Nix wrapper's PATH pins packaged harnesses; a login shell must not shadow them.
+    const mergedPath = mergePaths(
+      config.platform,
+      config.env[NIX_STORE_PATH_ENV]
+        ? [inheritedPath, hydratedPath]
+        : [hydratedPath, inheritedPath],
+    );
 
     if (Option.isSome(mergedPath)) {
       config.env.PATH = mergedPath.value;

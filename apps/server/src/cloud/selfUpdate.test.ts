@@ -35,6 +35,7 @@ interface HarnessOptions {
   readonly requestUpdate?: ServiceLauncherClient.ServiceLauncherClient["Service"]["requestUpdate"];
   readonly desktopAppUpdate?: DesktopAppUpdate.DesktopAppUpdate["Service"];
   readonly policy?: ManagedPolicyDocument;
+  readonly entry?: string;
 }
 
 const archiveBytes = new TextEncoder().encode("not really a tarball");
@@ -166,6 +167,7 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
     ),
     Effect.provideService(HostProcess.Platform, "linux"),
     Effect.provideService(HostProcess.Architecture, "x64"),
+    Effect.provideService(HostProcess.Arguments, ["node", options.entry ?? "/opt/t3/bin.mjs"]),
     Effect.provide(
       Layer.merge(
         ServerConfig.layer({ ...config, mode: options.mode ?? "web" }),
@@ -291,6 +293,19 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       expect(urls.length).toBeGreaterThan(0);
       for (const url of urls)
         expect(url).toMatch(/^https:\/\/updates\.example\.com\/t3code\/v1\.[12]\.0\//);
+    }),
+  );
+
+  it.effect("refuses to update a server started from the Nix store", () =>
+    Effect.gen(function* () {
+      const entry = "/nix/store/abc-t3code/libexec/t3code/apps/server/dist/bin.mjs";
+      for (const mode of ["web", "desktop"] as const) {
+        const { selfUpdate, order } = yield* makeHarness({ mode, entry });
+        expect(
+          (yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
+        ).toBe(HostProcess.NIX_MANAGED_UPDATE_MESSAGE);
+        expect(order).toEqual([]);
+      }
     }),
   );
 

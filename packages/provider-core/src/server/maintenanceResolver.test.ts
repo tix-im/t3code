@@ -2349,6 +2349,36 @@ it.layer(
   );
 });
 
+it.effect("offers no provider update when T3 runs from the Nix store", () =>
+  Effect.gen(function* () {
+    const capabilities = makeProviderMaintenanceCapabilities({
+      provider: driver("packageTool"),
+      packageName: "@example/package-tool",
+      updateExecutable: "npm",
+      updateArgs: ["install", "-g", "@example/package-tool@latest"],
+      updateLockKey: "npm-global:/opt/node",
+    });
+    const latestVersions = yield* ProviderLatestVersions.make([["@example/package-tool", "2.0.0"]]);
+    const { versionAdvisory } = yield* enrichProviderSnapshotWithVersionAdvisory(
+      installedPackageToolProvider,
+      capabilities,
+    ).pipe(
+      Effect.provideService(HostProcess.Arguments, ["node", "/nix/store/abc-t3/dist/bin.mjs"]),
+      Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+      Effect.provideService(
+        HttpClient.HttpClient,
+        HttpClient.make(() => Effect.die("unexpected request")),
+      ),
+    );
+    expect(versionAdvisory).toMatchObject({
+      status: "unknown",
+      latestVersion: null,
+      canUpdate: false,
+      updateCommand: null,
+    });
+  }),
+);
+
 it("pins only owned package-manager installs and preserves their execution context", () => {
   const capabilities = makeProviderMaintenanceCapabilities({
     provider: driver("codex"),

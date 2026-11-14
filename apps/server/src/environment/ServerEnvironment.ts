@@ -197,6 +197,7 @@ export const make = Effect.gen(function* () {
   const machine = yield* detectServerEnvironmentMachineKind();
   const launcher = yield* resolveServiceLauncherMode();
   const serverSelfUpdate = resolveServerSelfUpdateCapability({
+    nixManaged: yield* HostProcess.isNixManaged,
     desktopManaged: serverConfig.mode === "desktop",
     launcherManaged: launcher.managed,
   });
