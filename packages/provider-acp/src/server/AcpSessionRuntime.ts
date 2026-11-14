@@ -1458,6 +1458,8 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
         ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
         ...(spawnEnvironment ? { env: spawnEnvironment } : {}),
         extendEnv: options.spawn.extendEnv ?? true,
+        // Without it, scope close waits forever on an agent that survives SIGTERM.
+        forceKillAfter: "1 second",
         ...(options.ownDetachedProcessGroup === undefined
           ? {}
           : { detached: options.ownDetachedProcessGroup }),
