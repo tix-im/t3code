@@ -267,6 +267,8 @@ export const AcpRegistryProbeModel = Schema.Struct({
   id: AcpRegistryProbeText,
   name: AcpRegistryProbeText,
   description: AcpRegistryProbeDescription,
+  // The choice's ACP `_meta`, for agent-specific model metadata.
+  meta: Schema.optionalKey(Schema.Record(Schema.String, Schema.Json)),
 });
 export type AcpRegistryProbeModel = typeof AcpRegistryProbeModel.Type;
 

@@ -29,6 +29,7 @@ import {
   buildCheckedAcpRegistrySnapshot,
   checkAcpRegistryProviderReadiness,
   checkAcpRegistryProviderStatus,
+  type AcpRegistryModelDescriber,
 } from "./driver.ts";
 import { normalizeAcpRegistryLiveConfiguration } from "./probe.ts";
 
@@ -363,6 +364,133 @@ describe("acpRegistrySnapshotReadiness", () => {
 
     expect(snapshot.models.map((model) => model.slug)).toEqual(["default"]);
     expect(snapshot.models[0]?.isDefault).toBe(true);
+  });
+
+  it("gives every hook-described model its own reasoning option after a probe", () => {
+    const reasoning = (id: string) => ({
+      id: "thought_level",
+      label: "Reasoning",
+      type: "select" as const,
+      options: [{ id, label: id }],
+    });
+    const describeModel: AcpRegistryModelDescriber = (choice) => {
+      const meta = choice.meta?.["example.dev/model"] as
+        | { readonly context?: number; readonly variant?: string }
+        | undefined;
+      return meta === undefined
+        ? undefined
+        : {
+            contextWindow: meta.context,
+            ...(meta.variant === undefined ? {} : { optionDescriptors: [reasoning(meta.variant)] }),
+          };
+    };
+    const models = [
+      {
+        id: "big",
+        name: "Big",
+        description: "Large context",
+        meta: { "example.dev/model": { context: 1_000_000, variant: "hook-big" } },
+      },
+      {
+        id: "small",
+        name: "Small",
+        description: null,
+        meta: { "example.dev/model": { context: -1, variant: "hook-small" } },
+      },
+      {
+        id: "medium",
+        name: "Medium",
+        description: null,
+        meta: { "example.dev/model": { variant: "hook-medium" } },
+      },
+      { id: "plain", name: "Plain", description: "No metadata" },
+    ];
+    const snapshot = buildCheckedAcpRegistrySnapshot({
+      ...identity,
+      describeModel,
+      settings: decodeSettings({ agentId: "test-agent" }),
+      checkedAt: "2026-08-13T10:00:00.000Z",
+      inspection: { status: "ready", agentId: "test-agent", version: "1.0.0", distribution: "npx" },
+      probe: {
+        probe: {
+          instanceId: identity.instanceId,
+          ready: true,
+          icon: null,
+          authMethods: [],
+          models,
+          currentModelId: "big",
+          configOptions: [{ ...reasoning("session"), currentValue: "session" }],
+          modelOptionIds: ["thought_level"],
+          sessionManagement: noSessionManagement,
+        },
+        slashCommands: [],
+        skills: [],
+      },
+    });
+    const summary = (provider: ServerProvider) =>
+      provider.models.map(({ slug, description, contextWindow, capabilities }) => ({
+        slug,
+        description,
+        contextWindow,
+        reasoning: capabilities?.optionDescriptors?.flatMap((descriptor) =>
+          descriptor.type === "select" ? descriptor.options.map((option) => option.id) : [],
+        ),
+      }));
+
+    // The current model keeps the session's option, hook-described models get
+    // their own, and a model without a description keeps the upstream rule.
+    expect(summary(snapshot)).toEqual([
+      {
+        slug: "big",
+        description: "Large context",
+        contextWindow: 1_000_000,
+        reasoning: ["session"],
+      },
+      {
+        slug: "small",
+        description: undefined,
+        contextWindow: undefined,
+        reasoning: ["hook-small"],
+      },
+      {
+        slug: "medium",
+        description: undefined,
+        contextWindow: undefined,
+        reasoning: ["hook-medium"],
+      },
+      { slug: "plain", description: "No metadata", contextWindow: undefined, reasoning: [] },
+    ]);
+    expect(
+      summary(
+        applyAcpRegistryLiveConfiguration(
+          snapshot,
+          {
+            models,
+            currentModelId: "small",
+            configOptions: [reasoning("live")],
+            modelOptionIds: ["thought_level"],
+          },
+          [],
+          snapshot.models,
+          describeModel,
+        ),
+      ),
+    ).toEqual([
+      {
+        slug: "big",
+        description: "Large context",
+        contextWindow: 1_000_000,
+        reasoning: ["hook-big"],
+      },
+      { slug: "small", description: undefined, contextWindow: undefined, reasoning: ["live"] },
+      {
+        slug: "medium",
+        description: undefined,
+        contextWindow: undefined,
+        reasoning: ["hook-medium"],
+      },
+      { slug: "plain", description: "No metadata", contextWindow: undefined, reasoning: [] },
+    ]);
   });
 
   it.each(["registry", "local"] as const)(

@@ -62,8 +62,15 @@ describe("ACP Registry probe", () => {
             type: "select",
             currentValue: "gpt-5.4",
             options: [
-              { value: "gpt-5.4", name: "GPT-5.4" },
+              {
+                value: "gpt-5.4",
+                name: "GPT-5.4",
+                description: "Frontier model",
+                _meta: { "example.dev/model": { contextWindow: 400_000 } },
+              },
               { value: "gpt-5.4", name: "Duplicate" },
+              // Oversized metadata is dropped; the choice itself stays.
+              { value: "gpt-5.4-mini", name: "Mini", _meta: { blob: "x".repeat(5_000) } },
             ],
           },
           {
@@ -102,7 +109,15 @@ describe("ACP Registry probe", () => {
         },
         { id: "login", name: "Terminal login", description: null, type: "terminal" },
       ],
-      models: [{ id: "gpt-5.4", name: "GPT-5.4", description: null }],
+      models: [
+        {
+          id: "gpt-5.4",
+          name: "GPT-5.4",
+          description: "Frontier model",
+          meta: { "example.dev/model": { contextWindow: 400_000 } },
+        },
+        { id: "gpt-5.4-mini", name: "Mini", description: null },
+      ],
       currentModelId: "gpt-5.4",
       configOptions: [
         {

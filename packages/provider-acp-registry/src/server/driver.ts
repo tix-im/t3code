@@ -4,6 +4,8 @@ import {
   resolveOfficialAcpRegistryIconUrl,
   TextGenerationError,
   type AcpRegistryOperationError,
+  type AcpRegistryProbeModel,
+  type ProviderOptionDescriptor,
   type ServerProvider,
   type ServerProviderModel,
 } from "@t3tools/contracts";
@@ -89,6 +91,67 @@ const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
   };
 };
 
+/** An ACP model choice as the agent advertised it. */
+export interface AcpRegistryModelChoice {
+  readonly value: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly meta?: { readonly [key: string]: unknown };
+}
+
+/** Metadata an agent-specific driver derives from a model choice. */
+export interface AcpRegistryModelDescription {
+  readonly contextWindow?: number | undefined;
+  readonly description?: string | undefined;
+  /** Options of this model; they replace session-reported options with the same id. */
+  readonly optionDescriptors?: ReadonlyArray<ProviderOptionDescriptor> | undefined;
+}
+
+export type AcpRegistryModelDescriber = (
+  choice: AcpRegistryModelChoice,
+) => AcpRegistryModelDescription | undefined;
+
+const MAX_MODEL_DESCRIPTION_LENGTH = 240;
+
+const withOverrides = (
+  base: ReadonlyArray<ProviderOptionDescriptor>,
+  overrides: ReadonlyArray<ProviderOptionDescriptor>,
+) =>
+  overrides.length === 0
+    ? base
+    : [
+        ...base.filter(
+          (descriptor) => !overrides.some((override) => override.id === descriptor.id),
+        ),
+        ...overrides,
+      ];
+
+function describedModelFields(
+  model: AcpRegistryProbeModel,
+  describeModel: AcpRegistryModelDescriber | undefined,
+) {
+  const described = describeModel?.({
+    value: model.id,
+    name: model.name,
+    ...(model.description === null ? {} : { description: model.description }),
+    ...(model.meta === undefined ? {} : { meta: model.meta }),
+  });
+  const description = (described?.description ?? model.description ?? "")
+    .trim()
+    .slice(0, MAX_MODEL_DESCRIPTION_LENGTH)
+    .trim();
+  const contextWindow = described?.contextWindow;
+  return {
+    fields: {
+      ...(contextWindow !== undefined && Number.isSafeInteger(contextWindow) && contextWindow > 0
+        ? { contextWindow }
+        : {}),
+      ...(description.length > 0 ? { description } : {}),
+    },
+    optionDescriptors: described?.optionDescriptors ?? [],
+  };
+}
+
 function modelsFromDiscovery(
   discovery:
     | Pick<
@@ -97,7 +160,10 @@ function modelsFromDiscovery(
       >
     | undefined,
   customModels: ReadonlyArray<string>,
-  previousModels: ReadonlyArray<ServerProviderModel> = [],
+  context: {
+    readonly previousModels?: ReadonlyArray<ServerProviderModel>;
+    readonly describeModel?: AcpRegistryModelDescriber | undefined;
+  } = {},
 ): ReadonlyArray<ServerProviderModel> {
   const discovered = discovery?.models ?? [];
   const capabilities =
@@ -111,12 +177,19 @@ function modelsFromDiscovery(
     (descriptor) => !modelOptionIds.has(descriptor.id),
   );
   const sharedIds = new Set(shared.map((descriptor) => descriptor.id));
-  const capabilitiesFor = (slug: string) => {
-    if (slug === discovery?.currentModelId) return capabilities;
+  const capabilitiesFor = (slug: string, described: ReadonlyArray<ProviderOptionDescriptor>) => {
+    if (slug === discovery?.currentModelId) {
+      return described.length === 0
+        ? capabilities
+        : createModelCapabilities({
+            optionDescriptors: withOverrides(described, discovery.configOptions),
+          });
+    }
     const own = (
-      previousModels.find((model) => model.slug === slug)?.capabilities?.optionDescriptors ?? []
+      context.previousModels?.find((model) => model.slug === slug)?.capabilities
+        ?.optionDescriptors ?? []
     ).filter((descriptor) => !sharedIds.has(descriptor.id));
-    const optionDescriptors = [...shared, ...own];
+    const optionDescriptors = withOverrides([...shared, ...own], described);
     return optionDescriptors.length === 0
       ? EMPTY_CAPABILITIES
       : createModelCapabilities({ optionDescriptors });
@@ -132,13 +205,17 @@ function modelsFromDiscovery(
             capabilities,
           },
         ]
-      : discovered.map((model) => ({
-          slug: model.id,
-          name: model.name,
-          isCustom: false,
-          ...(model.id === discovery?.currentModelId ? { isDefault: true } : {}),
-          capabilities: capabilitiesFor(model.id),
-        }));
+      : discovered.map((model) => {
+          const described = describedModelFields(model, context.describeModel);
+          return {
+            slug: model.id,
+            name: model.name,
+            isCustom: false,
+            ...(model.id === discovery?.currentModelId ? { isDefault: true } : {}),
+            ...described.fields,
+            capabilities: capabilitiesFor(model.id, described.optionDescriptors),
+          };
+        });
   return providerModelsFromSettings(builtInModels, customModels, capabilities);
 }
 
@@ -200,6 +277,7 @@ function acpRegistrySnapshotReadiness(
 }
 
 interface SnapshotIdentity {
+  readonly describeModel?: AcpRegistryModelDescriber | undefined;
   readonly instanceId: ProviderInstance["instanceId"];
   readonly displayName: string | undefined;
   readonly accentColor: string | undefined;
@@ -251,7 +329,9 @@ function baseSnapshot(
             : input.settings.agentId.length > 0),
     },
     ...(input.message ? { message: input.message } : {}),
-    models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels),
+    models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels, {
+      describeModel: input.describeModel,
+    }),
     ...(input.probe === undefined
       ? {}
       : {
@@ -283,6 +363,7 @@ export function applyAcpRegistryLiveConfiguration(
   configuration: AcpRegistryLiveConfiguration,
   customModels: ReadonlyArray<string>,
   previousModels: ReadonlyArray<ServerProviderModel> = provider.models,
+  describeModel?: AcpRegistryModelDescriber,
 ): ServerProvider {
   const { message: _staleProbeMessage, ...snapshot } = provider;
   // session/load may omit models (Kimi returns `{}`); keep the probed list
@@ -296,7 +377,7 @@ export function applyAcpRegistryLiveConfiguration(
           models: probedModels.map((model) => ({
             id: model.slug,
             name: model.name,
-            description: null,
+            description: model.description ?? null,
           })),
           currentModelId: probedModels.find((model) => model.isDefault)?.slug ?? null,
         };
@@ -306,11 +387,10 @@ export function applyAcpRegistryLiveConfiguration(
     models:
       configuration.models.length === 0 && configuration.configOptions.length === 0
         ? provider.models
-        : modelsFromDiscovery(
-            discovery,
-            customModels,
-            previousModels.filter((model) => !model.isCustom),
-          ),
+        : modelsFromDiscovery(discovery, customModels, {
+            previousModels: previousModels.filter((model) => !model.isCustom),
+            describeModel,
+          }),
   };
 }
 
