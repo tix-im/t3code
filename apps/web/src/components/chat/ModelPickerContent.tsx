@@ -82,6 +82,8 @@ type ModelPickerItem = {
   continuationGroupKey?: string | undefined;
   isLegacy?: boolean | undefined;
   isUnavailable?: boolean | undefined;
+  description?: string | undefined;
+  contextWindow?: number | undefined;
 };
 
 export function resolveModelPickerSelectedModel(input: {
@@ -168,6 +170,7 @@ const MODEL_LIST_ESTIMATED_ITEM_SIZE = 32;
 // Rendered heights in `--spacing` units. Chrome is the search box and list padding, plus a 1px border.
 const ROW_UNITS = 8;
 const ROW_SEPARATOR_UNITS = 0.5;
+const DESCRIPTION_ROW_UNITS = 4;
 const LIST_CHROME_UNITS = 15.5;
 
 function ModelListSeparator() {
@@ -569,6 +572,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           ...(model.badge ? { badge: model.badge } : {}),
           ...(model.isLegacy ? { isLegacy: true } : {}),
           ...(model.isUnavailable ? { isUnavailable: true } : {}),
+          ...(model.description ? { description: model.description } : {}),
+          ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
           instanceId,
           driverKind: entry.driverKind,
           instanceDisplayName: entry.displayName,
@@ -589,22 +594,24 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   // Fit the tallest tab so switching tabs never resizes the popup and moves the rail under the cursor.
   const tallestTabUnits = (() => {
     const unitsByTab = new Map<ProviderInstanceId | "favorites", number>();
-    const addRow = (tab: ProviderInstanceId | "favorites") => {
+    const addRow = (tab: ProviderInstanceId | "favorites", hasDescription = false) => {
       const previous = unitsByTab.get(tab);
+      const rowUnits = hasDescription ? ROW_UNITS + DESCRIPTION_ROW_UNITS : ROW_UNITS;
       unitsByTab.set(
         tab,
-        previous === undefined ? ROW_UNITS : previous + ROW_SEPARATOR_UNITS + ROW_UNITS,
+        previous === undefined ? rowUnits : previous + ROW_SEPARATOR_UNITS + rowUnits,
       );
     };
     const tabsWithLegacyRow = new Set<ProviderInstanceId>();
     for (const model of flatModels) {
       if (!matchesLockedProvider(model)) continue;
       const isFavorite = favoritesSet.has(providerModelKey(model.instanceId, model.slug));
-      if (isFavorite) addRow("favorites");
+      const hasDescription = model.description !== undefined;
+      if (isFavorite) addRow("favorites", hasDescription);
       if (model.isLegacy && !isFavorite) {
         tabsWithLegacyRow.add(model.instanceId);
       } else {
-        addRow(model.instanceId);
+        addRow(model.instanceId, hasDescription);
       }
     }
     for (const instanceId of tabsWithLegacyRow) addRow(instanceId);
@@ -1042,6 +1049,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     slug={model.slug}
                     name={model.name}
                     subProvider={model.subProvider}
+                    description={model.description}
+                    contextWindow={model.contextWindow}
                     instanceId={model.instanceId}
                     driverKind={model.driverKind}
                     providerDisplayName={model.instanceDisplayName}

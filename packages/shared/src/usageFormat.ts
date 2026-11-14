@@ -72,6 +72,20 @@ export function formatTokens(value: number): string {
   return INTEGER.format(Math.round(value));
 }
 
+/** A short context window label such as "200K" or "1M". */
+export function formatContextWindow(tokens: number): string {
+  // Power-of-two windows (131072, 1048576) are named by their binary size.
+  const base = tokens % 1_000 !== 0 && tokens % 1_024 === 0 ? 1_024 : 1_000;
+  const millions = tokens / base ** 2;
+  if (millions >= 1 || Math.round(tokens / base) >= 1_000) return `${compactUnit(millions)}M`;
+  if (tokens >= base) return `${compactUnit(tokens / base)}K`;
+  return INTEGER.format(Math.round(tokens));
+}
+
+function compactUnit(value: number): string {
+  return value < 10 ? value.toFixed(1).replace(/\.0$/, "") : `${Math.round(value)}`;
+}
+
 function trim(value: number): string {
   const abs = Math.abs(value);
   const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;

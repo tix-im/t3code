@@ -75,6 +75,13 @@ export function ModelRowContent(
                 <Text className="text-3xs font-t3-bold text-foreground-muted">Default</Text>
               </View>
             ) : null}
+            {props.option.contextLabel ? (
+              <View className="rounded-md bg-subtle px-1.5 py-0.5">
+                <Text className="text-3xs font-t3-bold text-foreground-muted">
+                  {props.option.contextLabel}
+                </Text>
+              </View>
+            ) : null}
             {props.option.isLegacy ? (
               <View className="rounded-md bg-subtle px-1.5 py-0.5">
                 <Text className="text-3xs font-t3-bold text-foreground-muted">Legacy</Text>
@@ -87,12 +94,12 @@ export function ModelRowContent(
               <Text className="text-xs text-foreground">Unavailable</Text>
             ) : null}
           </View>
-          {props.option.subtitle ? (
+          {props.option.subtitle || props.option.description ? (
             <Text
               className="text-xs text-foreground-muted"
               numberOfLines={props.labelNumberOfLines}
             >
-              {props.option.subtitle}
+              {[props.option.subtitle, props.option.description].filter(Boolean).join(" · ")}
             </Text>
           ) : null}
         </View>
