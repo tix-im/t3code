@@ -598,6 +598,7 @@ export interface AcpRegistryBackedDriverSpec<Config> {
     readonly displayName?: string | undefined;
     readonly icon?: ServerProviderIcon | undefined;
   };
+  readonly describeModel?: AcpRegistryModelDescriber;
 }
 
 export function makeAcpRegistryBackedDriver<Config>(
@@ -662,6 +663,7 @@ export function makeAcpRegistryBackedDriver<Config>(
         displayName,
         accentColor,
         icon: branding?.icon,
+        describeModel: spec.describeModel,
         continuationKey: continuationIdentity.continuationKey,
       };
       const effectiveConfig = { ...config, enabled } satisfies AcpRegistrySettings;
@@ -718,6 +720,7 @@ export function makeAcpRegistryBackedDriver<Config>(
             configuration,
             effectiveConfig.customModels,
             learned.length > 0 ? learned : provider.models,
+            spec.describeModel,
           );
           return [next, next.models === provider.models ? learned : next.models];
         });

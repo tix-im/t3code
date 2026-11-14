@@ -2,6 +2,9 @@ export {
   AcpRegistryDriver,
   makeAcpRegistryBackedDriver,
   type AcpRegistryDriverEnv,
+  type AcpRegistryModelChoice,
+  type AcpRegistryModelDescriber,
+  type AcpRegistryModelDescription,
 } from "./server/driver.ts";
 export {
   AcpRegistryAdapterV2Driver,
