@@ -4,6 +4,7 @@ import {
   tiximContextOptions,
   tiximHarnessOptions,
   tiximModelOptions,
+  tiximRoutingOptions,
   withHarnessBranding,
 } from "./tiximSettingsOptions.logic";
 
@@ -48,6 +49,57 @@ describe("tixim settings options", () => {
       { value: "", label: "Harness default" },
       { value: "opus", label: "opus (not listed)" },
     ]);
+  });
+
+  it("labels models with their context window and reasoning variants", () => {
+    expect(
+      tiximModelOptions(
+        [
+          {
+            id: "openai/gpt-5.5",
+            name: "GPT-5.5",
+            contextWindow: 400_000,
+            variants: ["low", "medium", "high"],
+          },
+          { id: "anthropic/opus", name: "Opus", contextWindow: 1_000_000, variants: [] },
+        ],
+        "",
+      ).map((option) => option.label),
+    ).toEqual(["Harness default", "GPT-5.5 · 400K · low/medium/high", "Opus · 1M"]);
+  });
+
+  it("offers only the routings the harness supports behind its default", () => {
+    const harness = (routing?: {
+      default: "gateway" | "native";
+      supported: Array<"gateway" | "native">;
+    }) => ({
+      name: "claude-code",
+      description: "",
+      authenticated: true,
+      ...(routing ? { routing } : {}),
+    });
+    expect(
+      tiximRoutingOptions(harness({ default: "native", supported: ["native", "gateway"] }), ""),
+    ).toEqual([
+      { value: "default", label: "Default (harness login)" },
+      { value: "gateway", label: "Tix gateway" },
+      { value: "native", label: "Harness login" },
+    ]);
+    expect(
+      tiximRoutingOptions(harness({ default: "gateway", supported: ["gateway"] }), "native"),
+    ).toEqual([
+      { value: "default", label: "Default (Tix gateway)" },
+      { value: "gateway", label: "Tix gateway" },
+      { value: "native", label: "Harness login (not supported)" },
+    ]);
+    // A daemon that does not report routings keeps every choice.
+    for (const listed of [harness(), undefined]) {
+      expect(tiximRoutingOptions(listed, "gateway")).toEqual([
+        { value: "default", label: "Harness default" },
+        { value: "gateway", label: "Tix gateway" },
+        { value: "native", label: "Harness login" },
+      ]);
+    }
   });
 
   it("starts the harness choices with a placeholder that reflects the listing", () => {

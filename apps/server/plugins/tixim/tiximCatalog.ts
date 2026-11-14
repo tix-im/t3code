@@ -3,9 +3,11 @@ import {
   type TiximContext,
   type TiximListContextsResult,
   TiximHarnessIcon,
+  TiximHarnessRouting,
   type TiximListHarnessesResult,
   type TiximListModelsInput,
-  TiximListModelsResult,
+  type TiximListModelsResult,
+  TiximModel,
 } from "@t3tools/contracts";
 import { tiximHostEnvironment, resolveTiximCommand } from "@t3tools/plugin-tixim-provider/server";
 import * as Effect from "effect/Effect";
@@ -20,12 +22,20 @@ const GatewayModelRow = Schema.Struct({
   model: Schema.String,
   source: Schema.String,
   state: Schema.optional(Schema.String),
+  backend: Schema.optional(Schema.String),
 });
 
 const decodeGatewayModels = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Array(GatewayModelRow)),
 );
-const decodeHarnessModels = Schema.decodeEffect(Schema.fromJsonString(TiximListModelsResult));
+const decodeHarnessModels = Schema.decodeEffect(
+  Schema.fromJsonString(Schema.Struct({ models: Schema.Array(Schema.Unknown) })),
+);
+// Malformed metadata costs that model its metadata, not its place in the listing.
+const decodeModel = Schema.decodeUnknownOption(TiximModel);
+const decodeModelIdentity = Schema.decodeUnknownOption(
+  Schema.Struct({ id: Schema.String, name: Schema.String }),
+);
 
 const TixContextRow = Schema.Struct({
   name: Schema.String,
@@ -40,10 +50,12 @@ const TixHarnessRow = Schema.Struct({
   authenticated: Schema.optional(Schema.String),
   has_acp: Schema.optional(Schema.String),
   icon: Schema.optional(Schema.Unknown),
+  routing: Schema.optional(Schema.Unknown),
 });
 
-// A malformed icon only costs that harness its icon, not the whole listing.
+// A malformed icon or routing only costs that harness the field, not the whole listing.
 const decodeHarnessIcon = Schema.decodeUnknownOption(TiximHarnessIcon);
+const decodeHarnessRouting = Schema.decodeUnknownOption(TiximHarnessRouting);
 
 const decodeContextRows = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Array(TixContextRow)),
@@ -153,11 +165,13 @@ export const listTiximHarnesses = Effect.fn("TiximCatalog.listHarnesses")(functi
       .filter((row) => row.has_acp === "yes")
       .map((row) => {
         const icon = Option.getOrUndefined(decodeHarnessIcon(row.icon));
+        const routing = Option.getOrUndefined(decodeHarnessRouting(row.routing));
         return {
           name: row.name,
           description: row.description ?? "",
           authenticated: row.authenticated === "yes",
           ...(icon ? { icon } : {}),
+          ...(routing ? { routing } : {}),
         };
       }),
   };
@@ -188,7 +202,14 @@ export const listTiximModels = Effect.fn("TiximCatalog.listModels")(function* (
     ),
     Effect.map((rows) =>
       rows
-        .filter((row) => row.model && row.source !== "endpoint" && row.state !== "disabled")
+        // Rows without an approved backend are catalog entries the gateway cannot route.
+        .filter(
+          (row) =>
+            row.model &&
+            row.source !== "endpoint" &&
+            row.state === "approved" &&
+            row.backend !== "-",
+        )
         .map((row) => ({ id: row.model, name: row.model })),
     ),
   );
@@ -209,12 +230,17 @@ export const listTiximModels = Effect.fn("TiximCatalog.listModels")(function* (
         ),
       ),
     ),
-    Effect.map((result) => result.models),
+    Effect.map((result) =>
+      result.models.flatMap((row) => {
+        const model = Option.orElse(decodeModel(row), () => decodeModelIdentity(row));
+        return Option.isSome(model) ? [model.value] : [];
+      }),
+    ),
     Effect.catchIf(
       (error) => /unrecognized subcommand|unimplemented/i.test(error.message),
       () =>
         // The gateway list cannot describe what a harness's own login may run.
-        input.routing === "default"
+        input.routing !== "native"
           ? gatewayModels
           : Effect.fail(
               new TiximCommandError({
@@ -224,6 +250,6 @@ export const listTiximModels = Effect.fn("TiximCatalog.listModels")(function* (
             ),
     ),
   );
-  const models = yield* input.routing === "gateway" ? gatewayModels : harnessModels;
+  const models: TiximListModelsResult["models"] = yield* harnessModels;
   return { models: [...new Map(models.map((model) => [model.id, model])).values()] };
 });

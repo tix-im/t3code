@@ -40,12 +40,23 @@ export const TiximHarnessIcon = Schema.Struct({
 });
 export type TiximHarnessIcon = typeof TiximHarnessIcon.Type;
 
+export const TiximConcreteRouting = Schema.Literals(["gateway", "native"]);
+export type TiximConcreteRouting = typeof TiximConcreteRouting.Type;
+
+export const TiximHarnessRouting = Schema.Struct({
+  default: TiximConcreteRouting,
+  supported: Schema.Array(TiximConcreteRouting),
+});
+export type TiximHarnessRouting = typeof TiximHarnessRouting.Type;
+
 export const TiximHarness = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   authenticated: Schema.Boolean,
   /** Absent on daemons older than the harness icon standard. */
   icon: Schema.optional(TiximHarnessIcon),
+  /** Absent on daemons that do not report a harness's routings. */
+  routing: Schema.optional(TiximHarnessRouting),
 });
 export type TiximHarness = typeof TiximHarness.Type;
 
@@ -66,8 +77,37 @@ export const TiximListModelsInput = Schema.Struct({
   routing: Schema.Literals(["default", "gateway", "native"]),
 });
 export type TiximListModelsInput = typeof TiximListModelsInput.Type;
+const TokenCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
+
+/** What tixim knows about a model. Unknown data is absent, never guessed. */
+export const TiximModelMetadata = Schema.Struct({
+  description: Schema.optional(Schema.String),
+  provider: Schema.optional(Schema.String),
+  source: Schema.optional(Schema.String),
+  contextWindow: Schema.optional(TokenCount),
+  maxOutputTokens: Schema.optional(TokenCount),
+  reasoning: Schema.optional(Schema.Boolean),
+  variants: Schema.optional(Schema.Array(Schema.String)),
+  defaultVariant: Schema.optional(Schema.String),
+  cost: Schema.optional(
+    Schema.Struct({
+      inputPerMillion: Schema.optional(Schema.Number),
+      outputPerMillion: Schema.optional(Schema.Number),
+      currency: Schema.optional(Schema.String),
+    }),
+  ),
+});
+export type TiximModelMetadata = typeof TiximModelMetadata.Type;
+
+export const TiximModel = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  ...TiximModelMetadata.fields,
+});
+export type TiximModel = typeof TiximModel.Type;
+
 export const TiximListModelsResult = Schema.Struct({
-  models: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  models: Schema.Array(TiximModel),
 });
 export type TiximListModelsResult = typeof TiximListModelsResult.Type;
 

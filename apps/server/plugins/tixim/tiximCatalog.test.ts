@@ -90,6 +90,7 @@ describe("tixim catalog", () => {
                 authenticated: "yes",
                 has_acp: "yes",
                 icon: harnessIcon,
+                routing: { default: "native", supported: ["gateway", "native"] },
               },
               {
                 name: "hermes",
@@ -97,6 +98,7 @@ describe("tixim catalog", () => {
                 authenticated: "no",
                 has_acp: "yes",
                 icon: { id: "broken" },
+                routing: { default: "default", supported: ["default"] },
               },
               { name: "aider", description: "Aider", authenticated: "no", has_acp: "no" },
             ]),
@@ -107,7 +109,13 @@ describe("tixim catalog", () => {
         "dev-0",
       );
       expect(result.harnesses).toEqual([
-        { name: "codex", description: "Codex", authenticated: true, icon: harnessIcon },
+        {
+          name: "codex",
+          description: "Codex",
+          authenticated: true,
+          icon: harnessIcon,
+          routing: { default: "native", supported: ["gateway", "native"] },
+        },
         { name: "hermes", description: "Hermes", authenticated: false },
       ]);
       expect(calls[0]?.args).toEqual(["--context", "dev-0", "-o", "json", "harnesses", "list"]);
@@ -115,17 +123,23 @@ describe("tixim catalog", () => {
     }),
   );
 
-  it.effect("lists gateway models without endpoint placeholders or duplicates", () =>
+  it.effect("lists only routable gateway models when tix cannot list harness models", () =>
     Effect.gen(function* () {
       const result = yield* listTiximModels(
-        fakeRunner(() => ({
-          stdout: JSON.stringify([
-            { model: "gateway-model", source: "registry", state: "approved" },
-            { model: "gateway-model", source: "alias", state: "approved" },
-            { model: "Endpoint", source: "endpoint", state: "approved" },
-            { model: "disabled-model", source: "registry", state: "disabled" },
-          ]),
-        })),
+        fakeRunner((input) =>
+          input.args.includes("harnesses")
+            ? { stdout: "", code: 2, stderr: "error: unrecognized subcommand 'models'\n" }
+            : {
+                stdout: JSON.stringify([
+                  { model: "gateway-model", source: "registry", state: "approved", backend: "a" },
+                  { model: "gateway-model", source: "alias", state: "approved" },
+                  { model: "Endpoint", source: "endpoint", state: "approved" },
+                  { model: "disabled-model", source: "registry", state: "disabled" },
+                  { model: "catalog-only", source: "registry", state: "-", backend: "-" },
+                  { model: "unrouted", source: "registry", state: "approved", backend: "-" },
+                ]),
+              },
+        ),
         {},
         { context: "", harness: "codex", routing: "gateway" },
       );
@@ -133,15 +147,30 @@ describe("tixim catalog", () => {
     }),
   );
 
-  it.effect("uses the selected harness catalog for native and declared routing", () =>
+  it.effect("uses the selected harness catalog for every routing", () =>
     Effect.gen(function* () {
-      for (const routing of ["native", "default"] as const) {
+      const opus = {
+        id: "opus",
+        name: "Opus",
+        description: "1M ctx · reasoning",
+        source: "native",
+        contextWindow: 1_000_000,
+        variants: ["low", "high"],
+        defaultVariant: "high",
+        cost: { inputPerMillion: 5, outputPerMillion: 25, currency: "usd" },
+      };
+      for (const routing of ["native", "default", "gateway"] as const) {
         const calls: Array<ProcessRunner.ProcessRunInput> = [];
         const result = yield* listTiximModels(
           fakeRunner(
             () => ({
               stdout: JSON.stringify({
-                models: [{ id: "opus", name: "Opus" }],
+                models: [
+                  { ...opus, toolCall: true },
+                  // Bad metadata drops only the metadata; a row without an id drops the row.
+                  { id: "haiku", name: "Haiku", contextWindow: "200K" },
+                  { name: "nameless" },
+                ],
               }),
             }),
             calls,
@@ -153,7 +182,7 @@ describe("tixim catalog", () => {
             routing,
           },
         );
-        expect(result.models).toEqual([{ id: "opus", name: "Opus" }]);
+        expect(result.models).toEqual([opus, { id: "haiku", name: "Haiku" }]);
         expect(calls[0]?.args).toEqual([
           "--context",
           "remote",

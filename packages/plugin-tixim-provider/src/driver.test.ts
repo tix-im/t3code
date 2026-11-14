@@ -5,6 +5,7 @@ import { TiximSettings } from "./settings.ts";
 import {
   TIXIM_DRIVER_KIND,
   TiximDriver,
+  describeTiximModel,
   tiximAcpSettings,
   tiximBranding,
   tiximCommandArgs,
@@ -107,6 +108,85 @@ describe("Tixim driver", () => {
       expect(
         tiximBranding(decodeUnknownSettings({ harness: "x", harnessLabel: "X", harnessIcon })),
       ).toEqual({ displayName: "Tixim X", icon: undefined });
+    }
+  });
+
+  it.each([
+    {
+      name: "full metadata with a default variant",
+      choice: {
+        description: "400K ctx · reasoning",
+        meta: {
+          "tixim.dev/model": {
+            contextWindow: 400_000,
+            variants: ["low", "high"],
+            defaultVariant: "high",
+            extra: "ignored",
+          },
+        },
+      },
+      expected: {
+        contextWindow: 400_000,
+        description: "400K ctx · reasoning",
+        reasoning: ["default", "low", "high*"],
+      },
+    },
+    {
+      name: "variants without a default, description built from metadata",
+      choice: {
+        meta: {
+          "tixim.dev/model": {
+            provider: "openai",
+            reasoning: true,
+            cost: { inputPerMillion: 1.25, outputPerMillion: 10 },
+            variants: ["minimal", "minimal", "default", "medium"],
+            defaultVariant: "xhigh",
+          },
+        },
+      },
+      expected: {
+        contextWindow: undefined,
+        description: "openai · reasoning · $1.25 / $10 per M",
+        reasoning: ["default*", "minimal", "medium"],
+      },
+    },
+    {
+      name: "no variants",
+      choice: { meta: { "tixim.dev/model": { description: "Plain", variants: [] } } },
+      expected: { contextWindow: undefined, description: "Plain", reasoning: undefined },
+    },
+    { name: "no metadata", choice: { description: "Harness default" }, expected: undefined },
+    {
+      name: "garbage metadata",
+      choice: { meta: { "tixim.dev/model": { contextWindow: "400K", variants: "low" } } },
+      expected: undefined,
+    },
+    {
+      name: "non-object metadata",
+      choice: { meta: { "tixim.dev/model": 7 } },
+      expected: undefined,
+    },
+  ])("describes a model from its tixim metadata: $name", ({ choice, expected }) => {
+    const described = describeTiximModel({ value: "openai/gpt-5.5", name: "GPT-5.5", ...choice });
+    const reasoning = described?.optionDescriptors?.[0];
+    expect(
+      described === undefined
+        ? undefined
+        : {
+            contextWindow: described.contextWindow,
+            description: described.description,
+            reasoning:
+              reasoning?.type === "select"
+                ? reasoning.options.map((option) => `${option.id}${option.isDefault ? "*" : ""}`)
+                : undefined,
+          },
+    ).toEqual(expected);
+    if (reasoning !== undefined) {
+      expect(reasoning).toMatchObject({
+        id: "thought_level",
+        label: "Reasoning",
+        role: "reasoning",
+      });
     }
   });
 

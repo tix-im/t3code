@@ -1,9 +1,17 @@
-import { ProviderDriverKind, ServerProviderIcon } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ServerProviderIcon,
+  TiximModelMetadata,
+  type ProviderOptionDescriptor,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
-import { makeAcpRegistryBackedDriver } from "@t3tools/provider-acp-registry/server";
+import {
+  makeAcpRegistryBackedDriver,
+  type AcpRegistryModelDescriber,
+} from "@t3tools/provider-acp-registry/server";
 import { TIXIM_LINGER_SECONDS, TiximSettings } from "./settings.ts";
 
 export const TIXIM_DRIVER_KIND = ProviderDriverKind.make("tixim");
@@ -15,6 +23,10 @@ export const resolveTiximCommand = (environment: NodeJS.ProcessEnv = process.env
 
 const decodeSettings = Schema.decodeSync(TiximSettings);
 const decodeIcon = Schema.decodeUnknownOption(ServerProviderIcon);
+const decodeModelMetadata = Schema.decodeUnknownOption(TiximModelMetadata);
+const TIXIM_MODEL_META_KEY = "tixim.dev/model";
+// The ACP config option `tix acp serve` advertises, so threads set the variant there.
+const TIXIM_REASONING_OPTION_ID = "thought_level";
 
 /**
  * Env credentials and endpoints outrank a context's own auth.json and URL in
@@ -94,6 +106,55 @@ export function tiximBranding(settings: TiximSettings) {
   };
 }
 
+const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+function tiximReasoningOption(metadata: TiximModelMetadata): ProviderOptionDescriptor | undefined {
+  const variants = [...new Set(metadata.variants ?? [])].filter(
+    (variant) => variant.length > 0 && variant !== "default",
+  );
+  if (variants.length === 0) return undefined;
+  const defaultVariant = variants.find((variant) => variant === metadata.defaultVariant);
+  return {
+    id: TIXIM_REASONING_OPTION_ID,
+    type: "select",
+    label: "Reasoning",
+    role: "reasoning",
+    options: [
+      { id: "default", label: "Model default", isDefault: defaultVariant === undefined },
+      ...variants.map((variant) => ({
+        id: variant,
+        label: capitalize(variant),
+        ...(variant === defaultVariant ? { isDefault: true } : {}),
+      })),
+    ],
+  };
+}
+
+// The context window has its own badge, so the summary leaves it out.
+function tiximMetadataSummary(metadata: TiximModelMetadata): string | undefined {
+  const cost = metadata.cost;
+  const parts = [
+    metadata.provider,
+    metadata.reasoning ? "reasoning" : undefined,
+    cost?.inputPerMillion !== undefined && cost.outputPerMillion !== undefined
+      ? `$${cost.inputPerMillion} / $${cost.outputPerMillion} per M`
+      : undefined,
+  ].filter((part) => part !== undefined);
+  return parts.length === 0 ? undefined : parts.join(" · ");
+}
+
+/** Reads the model metadata `tix acp serve` attaches to each model choice. */
+export const describeTiximModel: AcpRegistryModelDescriber = (choice) => {
+  const metadata = Option.getOrUndefined(decodeModelMetadata(choice.meta?.[TIXIM_MODEL_META_KEY]));
+  if (metadata === undefined) return undefined;
+  const reasoning = tiximReasoningOption(metadata);
+  return {
+    contextWindow: metadata.contextWindow,
+    description: choice.description ?? metadata.description ?? tiximMetadataSummary(metadata),
+    ...(reasoning === undefined ? {} : { optionDescriptors: [reasoning] }),
+  };
+};
+
 export const TiximDriver = makeAcpRegistryBackedDriver<TiximSettings>({
   driverKind: TIXIM_DRIVER_KIND,
   displayName: "Tixim",
@@ -103,4 +164,5 @@ export const TiximDriver = makeAcpRegistryBackedDriver<TiximSettings>({
   hostEnvironment: tiximHostEnvironment,
   unconfiguredMessage: "Select a tixim harness before starting a thread.",
   branding: tiximBranding,
+  describeModel: describeTiximModel,
 });

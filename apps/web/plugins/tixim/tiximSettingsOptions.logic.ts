@@ -1,10 +1,12 @@
 import {
   ServerProviderIcon,
   type ProviderSettingsFormOption,
+  type TiximConcreteRouting,
   type TiximContext,
   type TiximHarness,
   type TiximListModelsResult,
 } from "@t3tools/contracts";
+import { formatContextWindow } from "@t3tools/shared/usageFormat";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -94,6 +96,49 @@ export function withHarnessBranding(
   };
 }
 
+const ROUTING_LABELS: Readonly<Record<TiximConcreteRouting, string>> = {
+  gateway: "Tix gateway",
+  native: "Harness login",
+};
+const DEFAULT_ROUTING_LABELS: Readonly<Record<TiximConcreteRouting, string>> = {
+  gateway: "Default (Tix gateway)",
+  native: "Default (harness login)",
+};
+const CONCRETE_ROUTINGS: ReadonlyArray<TiximConcreteRouting> = ["gateway", "native"];
+
+/** The routings the harness supports, all of them when its daemon does not say. */
+export function tiximRoutingOptions(
+  harness: TiximHarness | undefined,
+  configured: string,
+): ReadonlyArray<ProviderSettingsFormOption> {
+  const routing = harness?.routing;
+  const options = [
+    {
+      value: "default",
+      label: routing ? DEFAULT_ROUTING_LABELS[routing.default] : "Harness default",
+    },
+    ...CONCRETE_ROUTINGS.filter((value) => routing?.supported.includes(value) ?? true).map(
+      (value) => ({ value, label: ROUTING_LABELS[value] }),
+    ),
+  ];
+  return withConfigured(options, configured, (value) =>
+    value === "gateway" || value === "native"
+      ? `${ROUTING_LABELS[value]} (not supported)`
+      : `${value} (not supported)`,
+  );
+}
+
+function tiximModelLabel(model: TiximListModelsResult["models"][number]): string {
+  const variants = model.variants?.filter((variant) => variant !== "default") ?? [];
+  return [
+    model.name || model.id,
+    model.contextWindow ? formatContextWindow(model.contextWindow) : undefined,
+    variants.length > 0 ? variants.join("/") : undefined,
+  ]
+    .filter((part) => part !== undefined)
+    .join(" · ");
+}
+
 export function tiximModelOptions(
   models: TiximListModelsResult["models"] | null,
   configured: string,
@@ -101,7 +146,7 @@ export function tiximModelOptions(
   return withConfigured(
     [
       { value: "", label: "Harness default" },
-      ...(models ?? []).map((model) => ({ value: model.id, label: model.name || model.id })),
+      ...(models ?? []).map((model) => ({ value: model.id, label: tiximModelLabel(model) })),
     ],
     configured,
     (id) => `${id} (not listed)`,

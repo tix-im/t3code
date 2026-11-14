@@ -86,7 +86,7 @@ export const TiximSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed("default")),
       Schema.annotateKey({
         title: "Initial routing",
-        description: "Whether new workers use the tix gateway or the harness's own login.",
+        description: "Default for new threads; each thread can switch in its options.",
         providerSettingsForm: {
           control: "select",
           clearWhenEmpty: "omit",

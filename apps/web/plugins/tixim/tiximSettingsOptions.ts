@@ -16,6 +16,7 @@ import {
   tiximContextOptions,
   tiximHarnessOptions,
   tiximModelOptions,
+  tiximRoutingOptions,
 } from "./tiximSettingsOptions.logic";
 
 export interface TiximFieldOverride {
@@ -93,6 +94,12 @@ export function useTiximFieldOverrides(
           },
         ),
         ...(harnesses.error ? { description: harnesses.error } : {}),
+      },
+      routing: {
+        options: tiximRoutingOptions(
+          harnesses.data?.harnesses.find((candidate) => candidate.name === harness),
+          configuredRouting,
+        ),
       },
       model: {
         control: "select",
