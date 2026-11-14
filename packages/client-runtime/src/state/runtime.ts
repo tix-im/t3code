@@ -458,6 +458,29 @@ export function createRuntimeCommand<R, ER, W, A, E>(
   };
 }
 
+/** Installs the shared permission boundary for finite streamed commands. */
+export function createPermissionAwareRuntimeCommand<R, ER, W, A, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | R, ER>,
+  options: {
+    readonly label: string;
+    readonly execute: (
+      input: W,
+      registry: AtomRegistry.AtomRegistry,
+    ) => Effect.Effect<A, E, EnvironmentRegistry.EnvironmentRegistry | R>;
+  },
+): AtomCommand<W, A, E | ER> {
+  return createRuntimeCommand(runtime, {
+    label: options.label,
+    execute: (input, registry) =>
+      options.execute(input, registry).pipe(
+        Effect.provideService(RpcPermissionGuard, {
+          authorize: (id, method, payload) =>
+            createCommandPermissions(runtime, method).authorize(registry, id, payload),
+        }),
+      ),
+  });
+}
+
 export function reportAtomCommandResult(
   result: AtomCommandResult<unknown, unknown>,
   options: AtomCommandOptions = {},

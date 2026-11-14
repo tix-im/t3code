@@ -1,3 +1,4 @@
+import { makePluginRpcHandlers, pluginRpcContext } from "../plugins/installed.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
@@ -1522,6 +1523,7 @@ export const layerWsRpc = (
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerInstances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
       const acpRegistryCatalog = yield* AcpRegistrySupport.AcpRegistryCatalog;
+      const pluginRpcHandlers = yield* makePluginRpcHandlers;
       const acpRegistryRuntimeCoordinator =
         yield* AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator;
       const acpRegistrySessions = yield* AcpRegistrySessions.AcpRegistrySessions;
@@ -2321,6 +2323,7 @@ export const layerWsRpc = (
           acpRegistryCatalog
             .search(input)
             .pipe(Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError)),
+        ...pluginRpcHandlers,
         [WS_METHODS.serverPrepareAcpRegistryAgent]: (input) =>
           Effect.annotateCurrentSpan({ "acp_registry.agent_id": input.agentId }).pipe(
             Effect.andThen(
@@ -3503,6 +3506,7 @@ export const layer = Layer.unwrap(
     const peerLinks = yield* PeerLinks.PeerLinks;
     const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
     const sql = yield* SqlClient.SqlClient;
+    const pluginContext = yield* pluginRpcContext;
     return HttpRouter.add(
       "GET",
       "/ws",
@@ -3576,6 +3580,7 @@ export const layer = Layer.unwrap(
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),
               Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
+              Layer.provide(Layer.succeedContext(pluginContext)),
               Layer.provide(AcpRegistrySessions.layer),
               Layer.provide(ProviderMaintenanceRunner.layer),
               Layer.provide(Layer.succeed(NpmRelease.NpmRelease, npmRelease)),

@@ -5,6 +5,7 @@ import {
   type EnvironmentId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
+  type ServerProviderIcon,
   MODEL_PICKER_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
 import { resolveSelectableModel } from "@t3tools/shared/model";
@@ -79,6 +80,7 @@ type ModelPickerItem = {
   instanceAccentColor?: string | undefined;
   acpRegistryAgentId?: string | undefined;
   acpRegistryIconUrl?: string | undefined;
+  instanceIcon?: ServerProviderIcon | undefined;
   continuationGroupKey?: string | undefined;
   isLegacy?: boolean | undefined;
   isUnavailable?: boolean | undefined;
@@ -580,6 +582,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           ...(entry.accentColor ? { instanceAccentColor: entry.accentColor } : {}),
           ...(entry.acpRegistryAgentId ? { acpRegistryAgentId: entry.acpRegistryAgentId } : {}),
           ...(entry.acpRegistryIconUrl ? { acpRegistryIconUrl: entry.acpRegistryIconUrl } : {}),
+          ...(entry.icon ? { instanceIcon: entry.icon } : {}),
           ...(entry.continuationGroupKey
             ? { continuationGroupKey: entry.continuationGroupKey }
             : {}),
@@ -1057,6 +1060,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     providerAccentColor={model.instanceAccentColor}
                     acpRegistryAgentId={model.acpRegistryAgentId}
                     acpRegistryIconUrl={model.acpRegistryIconUrl}
+                    instanceIcon={model.instanceIcon}
                     isFavorite={favoritesSet.has(providerModelKey(model.instanceId, model.slug))}
                     isSelected={
                       selectedModelKeys !== undefined

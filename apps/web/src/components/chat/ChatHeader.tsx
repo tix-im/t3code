@@ -1,3 +1,4 @@
+import { PluginThreadHeaders } from "../../plugins";
 import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
@@ -393,6 +394,12 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      <PluginThreadHeaders
+        key={`${activeThreadEnvironmentId}/${activeThreadId}`}
+        environmentId={activeThreadEnvironmentId}
+        threadId={activeThreadId}
+        isServerThread={isServerThread}
+      />
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
     </div>
   );

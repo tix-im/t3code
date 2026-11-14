@@ -57,6 +57,7 @@ import {
   SCRATCH_PROJECT_TITLE,
   scopeProjectSettingsGroup,
 } from "./ProjectSettingsPanel.logic";
+import { webPlugins } from "../../plugins";
 import { useSettingsProjectGroups } from "./useSettingsProjectGroups";
 import { readUnloadedThreadCount } from "../../state/olderSettledShelf";
 import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
@@ -651,6 +652,18 @@ function ProjectDetail({
         </SettingsSection>
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />
+        {webPlugins.projectSettings.map(({ id, Component }) => {
+          const targetEnvironmentId = filePickerProject.environmentId;
+          return (
+            <Component
+              key={id}
+              environmentId={targetEnvironmentId}
+              projectIds={group.memberProjects
+                .filter((member) => member.environmentId === targetEnvironmentId)
+                .map((member) => member.id)}
+            />
+          );
+        })}
         {checkoutChoices}
         <SettingsSection title="Danger">
           <SettingsRow

@@ -32,5 +32,13 @@ describe("thread details items", () => {
 
     const hidden = { threadDetailsItems: { servers: false }, threadDetailsUsageEnabled: false };
     expect(setThreadDetailsItem(hidden, servers, true)).toEqual({});
+
+    const workflowSection = THREAD_DETAILS_ITEMS.find((item) => item.id === "workflows")!;
+    const hiddenPlugin = {
+      threadDetailsItems: { workflows: false },
+      threadDetailsUsageEnabled: false,
+    };
+    expect(resolveThreadDetailsVisibility(hiddenPlugin).workflows).toBe(false);
+    expect(setThreadDetailsItem(hiddenPlugin, workflowSection, true)).toEqual({});
   });
 });

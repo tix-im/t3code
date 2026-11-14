@@ -35,10 +35,13 @@ const metroCaller = {
   supportsReactCompiler: true,
 };
 
-const sourceFiles = NodeFS.readdirSync(NodePath.join(mobileRoot, "src"), { recursive: true })
-  .map(String)
-  .filter((file) => /\.tsx?$/.test(file) && !/\.(test\.tsx?|d\.ts)$/.test(file))
-  .map((file) => `src/${file.split(NodePath.sep).join("/")}`)
+const sourceFiles = ["src", "plugins"]
+  .flatMap((directory) =>
+    NodeFS.readdirSync(NodePath.join(mobileRoot, directory), { recursive: true })
+      .map(String)
+      .filter((file) => /\.tsx?$/.test(file) && !/\.(test\.tsx?|d\.ts)$/.test(file))
+      .map((file) => `${directory}/${file.split(NodePath.sep).join("/")}`),
+  )
   .sort();
 
 type CompilerLoc = { readonly start?: { readonly line?: number } } | null;

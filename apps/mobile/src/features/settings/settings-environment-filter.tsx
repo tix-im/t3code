@@ -40,16 +40,22 @@ function connectedSettingsTargets(environments: readonly EnvironmentPresentation
 function settingsProjectGroups(
   projects: Parameters<typeof buildProjectGroups>[0]["projects"],
   groupingMode: Parameters<typeof buildProjectGroups>[0]["settings"]["sidebarProjectGroupingMode"],
+  linkedProjectGroups: ReadonlyMap<string, string>,
 ) {
   let byMode = groupsCache.get(projects);
   if (!byMode) groupsCache.set(projects, (byMode = new Map()));
   let groups = byMode.get(groupingMode);
+  if (linkedProjectGroups.size > 0) groups = undefined;
   if (!groups) {
     groups = buildProjectGroups({
       projects,
-      settings: { sidebarProjectGroupingMode: groupingMode, sidebarProjectGroupingOverrides: {} },
+      settings: {
+        sidebarProjectGroupingMode: groupingMode,
+        sidebarProjectGroupingOverrides: {},
+        linkedProjectGroups,
+      },
     });
-    byMode.set(groupingMode, groups);
+    if (linkedProjectGroups.size === 0) byMode.set(groupingMode, groups);
   }
   return groups;
 }
@@ -115,7 +121,11 @@ export function useSettingsEnvironmentFilter() {
   const projects = useProjects();
   const groupingSettings = useMobileProjectGroupingSettings();
   const groupingMode = groupingSettings.sidebarProjectGroupingMode;
-  const projectGroups = settingsProjectGroups(projects, groupingMode);
+  const projectGroups = settingsProjectGroups(
+    projects,
+    groupingMode,
+    groupingSettings.linkedProjectGroups,
+  );
   const availableTargets = connectedSettingsTargets(environments);
   const selectedTargets = useMemo(
     () =>

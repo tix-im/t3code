@@ -1,3 +1,5 @@
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { PluginThreadHeader } from "../../plugins";
 import { AppBar } from "../../components/ui/AppBar";
 import type { AppBarAction, AppBarMenu } from "../../components/ui/AppBar.types";
 import {
@@ -43,23 +45,31 @@ export function ThreadHeader(props: {
   const menus = [gitMenu, terminalMenu].filter((menu): menu is AppBarMenu => menu !== null);
 
   return (
-    <AppBar
-      title={props.title}
-      subtitle={props.subtitle}
-      onBackToList={goBack}
-      onCompose={props.draft ? undefined : startNewTask}
-      backInSplitView={
-        props.onReturnToThread
-          ? {
-              accessibilityLabel: "Return to chat",
-              icon: "chevron.left",
-              onPress: props.onReturnToThread,
-            }
-          : undefined
-      }
-      actions={actions}
-      menus={menus}
-      hideBottomBorder
-    />
+    <>
+      <AppBar
+        title={props.title}
+        subtitle={props.subtitle}
+        onBackToList={goBack}
+        onCompose={props.draft ? undefined : startNewTask}
+        backInSplitView={
+          props.onReturnToThread
+            ? {
+                accessibilityLabel: "Return to chat",
+                icon: "chevron.left",
+                onPress: props.onReturnToThread,
+              }
+            : undefined
+        }
+        actions={actions}
+        menus={menus}
+        hideBottomBorder
+      />
+      {!props.draft ? (
+        <PluginThreadHeader
+          environmentId={EnvironmentId.make(String(props.gitControls.environmentId))}
+          threadId={ThreadId.make(String(props.gitControls.threadId))}
+        />
+      ) : null}
+    </>
   );
 }

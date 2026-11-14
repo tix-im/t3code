@@ -26,6 +26,7 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadDirenvControl, useThreadDirenvStatus } from "./ThreadDirenvControl";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
+import { PluginThreadDetails } from "../../plugins";
 import { ThreadServersPanel } from "./ThreadServersPanel";
 import {
   ThreadDetailsContext,
@@ -290,6 +291,16 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                   threadId={props.threadId}
                   showLineage={visible.lineage}
                   showSideChats={visible.sideChats}
+                />
+              ) : null}
+
+              {density === "full" && !props.draftId ? (
+                <PluginThreadDetails
+                  key={`${props.environmentId}/${props.threadId}`}
+                  environmentId={props.environmentId}
+                  threadId={props.threadId}
+                  isServerThread={props.isServerThread}
+                  visible={visible}
                 />
               ) : null}
 

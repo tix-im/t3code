@@ -233,6 +233,7 @@ export function NewTaskFlowProvider(
       projects,
       environmentId: null,
       projectGroupingMode: groupingSettings.sidebarProjectGroupingMode,
+      linkedProjectGroups: groupingSettings.linkedProjectGroups,
     }),
     threads,
     pendingTasks: [],

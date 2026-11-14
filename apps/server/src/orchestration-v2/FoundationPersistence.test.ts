@@ -1161,8 +1161,18 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         (yield* projectionStore.getThreadProjection(firstThreadId)).providerSessions[0]?.cwd,
         secondSession.cwd,
       );
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO tixim_workflow_links
+        (thread_id, daemon_id, run_id, connection_id, source, excluded, payload_json)
+        VALUES (${firstThreadId}, 'daemon', 'manual', 'connection', 'manual', 0, '{}'),
+               (${secondThreadId}, 'daemon', 'excluded', 'connection', 'automatic', 1, '{}')`;
+      const workflowLinks = yield* sql`SELECT * FROM tixim_workflow_links ORDER BY run_id`;
       assert.isTrue((yield* maintenance.verify).valid);
       assert.isTrue((yield* maintenance.rebuild).valid);
+      assert.deepEqual(
+        yield* sql`SELECT * FROM tixim_workflow_links ORDER BY run_id`,
+        workflowLinks,
+      );
     }),
   );
 

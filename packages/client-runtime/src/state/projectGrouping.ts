@@ -16,6 +16,7 @@ const SCRATCH_PROJECT_SCOPE_KEY = "\0no-project";
 export interface ProjectGroupingSettings {
   readonly sidebarProjectGroupingMode: SidebarProjectGroupingMode;
   readonly sidebarProjectGroupingOverrides: Record<string, SidebarProjectGroupingMode>;
+  readonly linkedProjectGroups?: ReadonlyMap<string, string>;
 }
 
 export type ProjectGroupingMode = SidebarProjectGroupingMode;
@@ -319,10 +320,12 @@ export function buildProjectGroups<TProject extends EnvironmentProject>(input: {
       shouldReplacePhysicalProjectWinner(current, candidate) ? candidate : current,
     );
     const identitySource = selectProjectIdentitySource(physicalProjects, winner);
-    const logicalKey = deriveLogicalProjectKey(identitySource, {
-      groupingMode: resolveProjectGroupingMode(winner, input.settings),
-      groupScratchProjects: input.groupScratchProjects ?? false,
-    });
+    const logicalKey =
+      input.settings.linkedProjectGroups?.get(`${winner.environmentId}\0${winner.id}`) ??
+      deriveLogicalProjectKey(identitySource, {
+        groupingMode: resolveProjectGroupingMode(winner, input.settings),
+        groupScratchProjects: input.groupScratchProjects ?? false,
+      });
     logicalKeyByPhysicalKey.set(physicalProjectKey, logicalKey);
     const member = { physicalProjectKey, project: winner };
     const existing = groupedMembers.get(logicalKey);

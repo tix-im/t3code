@@ -10,13 +10,13 @@ const repoRoot = NodePath.resolve(
   "../../..",
 );
 
-const webSourceFiles = NodeFS.readdirSync(NodePath.join(repoRoot, "apps/web/src"), {
-  recursive: true,
-})
-  .map(String)
-  .filter((file) => /\.tsx?$/.test(file) && !/\.(test|browser)\.tsx?$/.test(file))
-  .filter((file) => !file.endsWith(".gen.ts"))
-  .map((file) => `apps/web/src/${file}`);
+const webSourceFiles = ["apps/web/src", "apps/web/plugins"].flatMap((root) =>
+  NodeFS.readdirSync(NodePath.join(repoRoot, root), { recursive: true })
+    .map(String)
+    .filter((file) => /\.tsx?$/.test(file) && !/\.(test|browser)\.tsx?$/.test(file))
+    .filter((file) => !file.endsWith(".gen.ts"))
+    .map((file) => `${root}/${file}`),
+);
 
 // ChatView is ~9k lines. Compiling it takes ~9s on a fast machine and can pass the
 // 15s project limit on loaded CI runners, so slow files get a 60s limit below.

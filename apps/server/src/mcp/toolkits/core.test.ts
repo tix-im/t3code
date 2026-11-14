@@ -1,4 +1,5 @@
 import * as AssetSigner from "../../assets/AssetSigner.ts";
+import * as TiximWorkflows from "../../../plugins/tixim/TiximWorkflows.ts";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -82,7 +83,10 @@ const decodeThreadSearchResult = Schema.decodeUnknownEffect(
   ThreadToolkit.tools.t3_thread_search.successSchema,
 );
 
-const layerThreadToolkit = McpHttpServer.layerThreadToolkit.pipe(
+const layerThreadToolkit = Layer.merge(
+  McpHttpServer.layerThreadToolkit,
+  McpHttpServer.layerPluginToolkits,
+).pipe(
   Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
   Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
   Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
@@ -680,6 +684,17 @@ it.effect("a read-only client reads threads and is refused every write before it
     });
     expect(declaredFailure(configure)).toMatchObject({ code: "capability_denied" });
     expect(dispatched).toEqual([]);
+    const workflowWait = yield* call("t3_workflows_wait", { threadId: "other-project-thread" });
+    expect(declaredFailure(workflowWait)).toMatchObject({ code: "capability_denied" });
+    const workflowOwner = yield* call("t3_thread_workflows", {
+      threadId: "other-project-thread",
+      action: "attach",
+      connectionId: "tix",
+      daemonId: "daemon",
+      runId: "wf-calm-river-a12b",
+      relationship: "owner",
+    });
+    expect(declaredFailure(workflowOwner)).toMatchObject({ code: "capability_denied" });
   }).pipe(
     Effect.provide(
       layerThreadToolkit.pipe(
@@ -1187,4 +1202,79 @@ it.effect(
       ),
     );
   },
+);
+
+it.effect("routes workflow attachment tools through the registered backend service", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({
+        name: "t3_thread_workflows",
+        arguments: { action: "list", threadId: "workflow-thread" },
+      })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, clientScope("auto")),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent).toMatchObject({
+      runs: [],
+      connections: [{ id: "tix", label: "Connected", daemonId: "daemon", available: true }],
+    });
+    const childWait = yield* server
+      .callTool({ name: "t3_workflows_wait", arguments: { threadId: "workflow-thread" } })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, clientScope("auto")),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(declaredFailure(childWait)).toMatchObject({
+      code: "invalid_request",
+      message: expect.stringContaining("reports completion to its parent"),
+    });
+  }).pipe(
+    Effect.provide(
+      layerThreadToolkit.pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.succeed(TiximWorkflows.WorkflowOperations, {
+            observe: () => Effect.succeed([]),
+            readProgress: () => Effect.succeed([]),
+            list: (id) => {
+              expect(id).toBe("workflow-thread");
+              return Effect.succeed({
+                runs: [],
+                connections: [
+                  { id: "tix", label: "Connected", daemonId: "daemon", available: true },
+                ],
+              });
+            },
+            search: () => Effect.succeed({ runs: [], connections: [] }),
+            link: () => Effect.succeed({ runs: [], connections: [] }),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) =>
+              Effect.succeed(McpToolAccessTestkit.liveThreadShell(id, { runtimeMode: "auto" })),
+            getProjectThreadRecords: () =>
+              Effect.succeed({
+                thread: {
+                  id: ThreadId.make("workflow-thread"),
+                  projectId: "project",
+                  lineage: {
+                    rootThreadId: "parent",
+                    parentThreadId: "parent",
+                    relationshipToParent: "subagent",
+                  },
+                  runtimeMode: "auto",
+                  interactionMode: "default",
+                  deletedAt: null,
+                },
+              } as never),
+          }),
+        ),
+      ),
+    ),
+  ),
 );

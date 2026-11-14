@@ -13,6 +13,7 @@ import {
   pickableProjectGroups,
   resolveScratchProjectScopeKey,
 } from "@t3tools/client-runtime/state/project-grouping";
+import { usePluginProjectGrouping } from "../../plugins";
 
 import { useProjects } from "../../state/entities";
 import { steadyNavigationThreadShellsAtom } from "../../state/threads";
@@ -117,6 +118,9 @@ export function HomeRouteScreen() {
     () => new Set(environments.map((environment) => environment.environmentId)),
     [environments],
   );
+  const linkedProjectGroups = usePluginProjectGrouping([
+    ...new Set(projects.map((project) => project.environmentId)),
+  ]);
   const {
     options: listOptions,
     setSelectedEnvironmentId,
@@ -131,6 +135,7 @@ export function HomeRouteScreen() {
     {
       sidebarProjectGroupingMode: listOptions.projectGroupingMode,
       sidebarProjectGroupingOverrides: {},
+      linkedProjectGroups,
     },
   );
   const projectFilterOptions = useMemo(
@@ -140,12 +145,13 @@ export function HomeRouteScreen() {
           projects,
           environmentId: selectedEnvironmentId,
           projectGroupingMode: listOptions.projectGroupingMode,
+          linkedProjectGroups,
         }),
       ).map((scope) => ({
         key: scope.key,
         label: scope.title,
       })),
-    [listOptions.projectGroupingMode, projects, selectedEnvironmentId],
+    [listOptions.projectGroupingMode, projects, selectedEnvironmentId, linkedProjectGroups],
   );
   const selectedProjectKey = projectFilterOptions.some(
     (project) => project.key === resolvedProjectKey,

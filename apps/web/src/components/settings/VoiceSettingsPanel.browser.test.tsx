@@ -22,7 +22,7 @@ import {
 import { chooseAudioDestination, chooseTranscriptCleanup } from "../../speech/voiceConsent";
 import { useEnvironmentScope } from "../../state/session";
 import { toastManager } from "../ui/toast";
-import { SettingsScopeProvider } from "./SettingsScopeContext";
+import { SettingsScopeProvider } from "./SettingsScopeProvider";
 import { SpeechLanguageSelect } from "./SpeechLanguageSelect";
 import { VoiceSettingsPanel } from "./VoiceSettingsPanel";
 

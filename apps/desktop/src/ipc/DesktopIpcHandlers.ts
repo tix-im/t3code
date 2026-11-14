@@ -26,6 +26,7 @@ import {
   resolveSshHost,
   resolveSshPasswordPrompt,
 } from "./methods/sshEnvironment.ts";
+import { registerPluginIpc } from "../../plugins/installed.ts";
 import {
   checkForUpdate,
   downloadUpdate,
@@ -133,6 +134,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(bootstrapSshBearerSession);
   yield* ipc.handle(fetchSshSessionState);
   yield* ipc.handle(resolveSshPasswordPrompt);
+  yield* registerPluginIpc;
 
   yield* ipc.handle(getServerExposureState);
   yield* ipc.handle(setServerExposureMode);

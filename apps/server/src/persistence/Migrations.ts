@@ -1,3 +1,10 @@
+import { pluginMigrationTracks } from "../../plugins/installed-migrations.ts";
+import {
+  adoptLegacyPluginMigrations,
+  hasPendingPluginMigrations,
+  legacyPluginMigrationNames,
+  runPluginMigrations,
+} from "../plugins/migrations.ts";
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -180,6 +187,18 @@ const migrationEntries = [
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
 
+// Plugins keep their own history tables; startup adopts their old core rows by name.
+const pluginMigrationNames = legacyPluginMigrationNames(pluginMigrationTracks);
+for (const [id, name] of migrationEntries) {
+  if (pluginMigrationNames.has(name))
+    throw new Error(`Conflicting plugin migration: ${id}_${name}`);
+}
+
+/** Drops plugin rows older builds wrote to the core history, as startup does before migrating. */
+export const withoutLegacyPluginMigrations = <T extends { readonly name: string }>(
+  recorded: ReadonlyArray<T>,
+): ReadonlyArray<T> => recorded.filter(({ name }) => !pluginMigrationNames.has(name));
+
 const makeMigrationLoader = (throughId?: number) =>
   Migrator.fromRecord(
     Object.fromEntries(
@@ -250,7 +269,11 @@ export const hasPendingMigrations = Effect.fn("hasPendingMigrations")(function* 
     FROM effect_sql_migrations
   `;
   const row = rows[0];
-  return (row?.latestId ?? 0) < latestMigrationId || (row?.previewRows ?? 0) > 0;
+  return (
+    (row?.latestId ?? 0) < latestMigrationId ||
+    (row?.previewRows ?? 0) > 0 ||
+    (yield* hasPendingPluginMigrations(pluginMigrationTracks))
+  );
 });
 
 const run = Migrator.make({});
@@ -262,6 +285,7 @@ export interface RunMigrationsOptions {
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
+  yield* adoptLegacyPluginMigrations(pluginMigrationTracks);
   const includesV2 =
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
@@ -272,7 +296,13 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     ...previewMigrations,
     ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
   ];
-  const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
+  // A partial run stops at a core id, before any plugin table could reference what it adds.
+  const pluginMigrations =
+    toMigrationInclusive === undefined ? yield* runPluginMigrations(pluginMigrationTracks) : [];
+  const migrations = [
+    ...executedMigrations.map(([id, name]) => `${id}_${name}`),
+    ...pluginMigrations,
+  ];
   yield* migrations.length === 0
     ? Effect.logDebug("Database schema is current")
     : Effect.log("Migrations ran successfully").pipe(Effect.annotateLogs({ migrations }));

@@ -160,6 +160,7 @@ function SubagentMetadata(props: {
         <ProviderIcon
           provider={provider?.driver ?? subagent.driver}
           iconUrl={provider?.iconUrl}
+          instanceIcon={provider?.icon}
           size={12}
         />
       )}
