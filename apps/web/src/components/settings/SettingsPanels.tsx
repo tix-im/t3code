@@ -771,6 +771,27 @@ function useTranslatedSearchableSetting() {
   };
 }
 
+export function LegacyFeaturesSection() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+
+  return (
+    <SettingsSection id="legacy-features" title="Legacy">
+      <SettingsRow
+        {...searchableSetting("legacy-plan-mode")}
+        description="Restore Build/Plan, /plan, /default, and Shift+Tab. Off uses build mode."
+        control={
+          <Switch
+            checked={settings.planModeEnabled}
+            onCheckedChange={(checked) => updateSettings({ planModeEnabled: Boolean(checked) })}
+            aria-label="Plan mode (legacy)"
+          />
+        }
+      />
+    </SettingsSection>
+  );
+}
+
 export function GeneralSettingsPanel() {
   const gt = useGT();
   const m = useMessages();
@@ -2040,7 +2061,9 @@ export function ThreadsSettingsPanel() {
                     model={textGenModel}
                     modelOptions={textGenModelOptions}
                     allowPromptInjectedEffort={false}
-                    includePlanAgent={selectsPlanAgent(textGenModelOptions)}
+                    includePlanAgent={
+                      settings.planModeEnabled || selectsPlanAgent(textGenModelOptions)
+                    }
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onModelOptionsChange={(nextOptions) => {
                       updateSettings({
