@@ -41,6 +41,7 @@ const MAX_MODELS = 256;
 const MAX_ID_LENGTH = 128;
 const MAX_NAME_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1_024;
+const MAX_MODEL_META_LENGTH = 4_096;
 const MAX_COMMAND_LINE_LENGTH = 2_048;
 const PROBE_TIMEOUT_SECONDS = 60;
 const PROBE_TIMEOUT = `${PROBE_TIMEOUT_SECONDS} seconds`;
@@ -59,7 +60,15 @@ export function normalizeAcpRegistryWebUrl(value: string): string | undefined {
   return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
 }
 
-function normalizedModel(id: string, candidate: AcpRegistryProbeModel): AcpRegistryProbeModel {
+type AcpRegistryModelCandidate = Omit<AcpRegistryProbeModel, "meta"> & {
+  readonly meta?: AcpRegistryProbeModel["meta"] | null | undefined;
+};
+
+const boundedMeta = (meta: AcpRegistryModelCandidate["meta"]) =>
+  meta != null && JSON.stringify(meta).length <= MAX_MODEL_META_LENGTH ? meta : undefined;
+
+function normalizedModel(id: string, candidate: AcpRegistryModelCandidate): AcpRegistryProbeModel {
+  const meta = boundedMeta(candidate.meta);
   return {
     id,
     name: boundedText(candidate.name, MAX_NAME_LENGTH) || id,
@@ -67,11 +76,12 @@ function normalizedModel(id: string, candidate: AcpRegistryProbeModel): AcpRegis
       candidate.description === null
         ? null
         : boundedText(candidate.description, MAX_DESCRIPTION_LENGTH) || null,
+    ...(meta === undefined ? {} : { meta }),
   };
 }
 
 function normalizeModels(
-  candidates: ReadonlyArray<AcpRegistryProbeModel>,
+  candidates: ReadonlyArray<AcpRegistryModelCandidate>,
   currentModelId: string | null,
 ): ReadonlyArray<AcpRegistryProbeModel> {
   const seen = new Set<string>();
@@ -185,11 +195,13 @@ export function normalizeAcpRegistryLiveConfiguration(
           id: model.modelId,
           name: model.name,
           description: model.description ?? null,
+          meta: model._meta,
         }))
       : flattenSelectChoices(modelOption.options).map((model) => ({
           id: model.value,
           name: model.name,
           description: model.description ?? null,
+          meta: model._meta,
         }));
   const boundedCurrentModelId =
     currentModelId === undefined

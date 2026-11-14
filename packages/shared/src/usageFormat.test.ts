@@ -2,7 +2,12 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { UsageSource } from "@t3tools/contracts";
 
-import { formatHourShort, makeWindow, usageSourceMessages } from "./usageFormat.ts";
+import {
+  formatContextWindow,
+  formatHourShort,
+  makeWindow,
+  usageSourceMessages,
+} from "./usageFormat.ts";
 
 function malformedSource(count: number, overrides: Partial<UsageSource> = {}): UsageSource {
   return {
@@ -21,6 +26,24 @@ function malformedSource(count: number, overrides: Partial<UsageSource> = {}): U
     ...overrides,
   };
 }
+
+describe("formatContextWindow", () => {
+  it.each([
+    [500, "500"],
+    [8_192, "8K"],
+    [128_000, "128K"],
+    [131_072, "128K"],
+    [200_000, "200K"],
+    [256_000, "256K"],
+    [999_600, "1M"],
+    [1_000_000, "1M"],
+    [1_048_576, "1M"],
+    [1_500_000, "1.5M"],
+    [2_000_000, "2M"],
+  ])("labels %d tokens as %s", (tokens, label) => {
+    expect(formatContextWindow(tokens)).toBe(label);
+  });
+});
 
 describe("usage source messages", () => {
   it("combines different skipped-record counts into one warning", () => {

@@ -71,6 +71,8 @@ export interface AppModelOption {
   isDefault?: boolean;
   isLegacy?: boolean;
   isUnavailable?: boolean;
+  description?: string;
+  contextWindow?: number;
 }
 
 function appendUnavailableDynamicModelSelection(
@@ -108,6 +110,8 @@ function toAppModelOption(
   if (model.badge) option.badge = model.badge;
   if (model.isDefault) option.isDefault = true;
   if (model.isLegacy) option.isLegacy = true;
+  if (model.description) option.description = model.description;
+  if (model.contextWindow) option.contextWindow = model.contextWindow;
   return option;
 }
 

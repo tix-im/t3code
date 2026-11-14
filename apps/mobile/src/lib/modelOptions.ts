@@ -22,6 +22,7 @@ import {
   getProviderOptionDescriptors,
 } from "@t3tools/shared/model";
 import { resolveModelShortName } from "@t3tools/client-runtime/provider-clients";
+import { formatContextWindow } from "@t3tools/shared/usageFormat";
 import { resolveProvidersForCwd } from "@t3tools/client-runtime/providerSkills";
 
 export type ModelOption = {
@@ -29,6 +30,9 @@ export type ModelOption = {
   readonly label: string;
   readonly shortName?: string;
   readonly subtitle: string;
+  readonly description?: string;
+  /** Compact context window, such as "200K". */
+  readonly contextLabel?: string;
   readonly providerKey: string;
   readonly providerLabel: string;
   readonly providerDriver: string;
@@ -380,6 +384,8 @@ export function buildModelOptions(
         label: model.name,
         ...(shortName ? { shortName } : {}),
         subtitle: model.subProvider ?? "",
+        ...(model.description ? { description: model.description } : {}),
+        ...(model.contextWindow ? { contextLabel: formatContextWindow(model.contextWindow) } : {}),
         providerKey: provider.instanceId,
         providerLabel,
         providerDriver: provider.driver,
@@ -449,6 +455,8 @@ export function buildModelOptions(
         label: model?.name ?? fallbackModelSelection.model,
         ...(shortName ? { shortName } : {}),
         subtitle: model?.subProvider ?? "",
+        ...(model?.description ? { description: model.description } : {}),
+        ...(model?.contextWindow ? { contextLabel: formatContextWindow(model.contextWindow) } : {}),
         providerKey: fallbackModelSelection.instanceId,
         providerLabel,
         providerDriver,
