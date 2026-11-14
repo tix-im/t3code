@@ -49,3 +49,7 @@ node_modules/
 
 # pnpm content-addressable store; never belongs in the repo.
 .pnpm-store/
+
+# direnv: the repo's .envrc loads the flake dev shell.
+!/.envrc
+.direnv/

@@ -62,6 +62,16 @@ We need to be on the same page with terminology. When communicating, use this la
 2. **Writing to the live install.** `~/.t3/userdata` is the developer's real T3 Code database, in use while you work. Reading it and copying from it are fine, and a good way to get real test data (see Test data). Never start a server against it, never open it read-write, never clean it up.
 3. **Baking in origins.** Never set `VITE_HTTP_URL` or `VITE_WS_URL` for dev. Dev is single-origin and Vite proxies `/api`, `/ws`, `/oauth`, and `/.well-known`. Setting them bakes localhost into the bundle and silently breaks every remote browser.
 
+## This fork: `integration` is woven by git loom
+
+This is the tix-im fork of T3 Code. Its `integration` branch is what tixim-t3code builds (the packaging repo's `t3code-src` flake input), and nobody commits to it directly. [git-loom](https://github.com/narnaud/git-loom) builds it by weaving the fork's feature branches on top of `upstream/main` (pingdotgg; push disabled). `git loom status` lists the branches and their commits.
+
+- Commit each change to the feature branch it belongs to. A new topic gets a new branch cut from `upstream/main`, so it can go upstream on its own.
+- Use git-loom 1.0 from this repo's dev shell (`direnv allow`) with `LOOM_AGENT=1`; an older `git loom` on PATH lacks commands.
+- `git loom update` fetches and rebases every branch onto the latest `upstream/main`. Run it only when you mean to take upstream changes. To bring in one branch's new commits without that, merge the branch into `integration`.
+- Force-push the rewoven branches and `integration` to `origin`. `integration` must keep tracking `upstream/main`; after a `git push -u`, reset it with `git branch --set-upstream-to=upstream/main integration`.
+- Then run `just upstream-upgrade <commit>` in the packaging repo, which bumps `t3code-src`.
+
 ## Hit every surface
 
 The most common defect in this repo is a change that works on the path you tested and is missing everywhere else. Before calling frontend work done, walk this list and say which entries applied:
