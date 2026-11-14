@@ -36,6 +36,8 @@ import { TestClock } from "effect/testing";
 import { HttpServer } from "effect/http";
 
 import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
+import * as DirenvEnvironment from "../provider/DirenvEnvironment.ts";
+import * as ProjectEnvironmentService from "../project/ProjectEnvironmentService.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
@@ -334,6 +336,7 @@ const makeNativeChildFixture = Effect.fnUntraced(function* () {
   const childThreadId = ThreadId.make("native-child");
   const providerSessionId = idAllocator.derive.providerSession({
     providerInstanceId: modelSelection.instanceId,
+    projectId: ProjectId.make("project-provider-session-manager"),
   });
   const childThreadEvent = yield* makeThreadCreatedEvent({
     idAllocator,
@@ -637,6 +640,9 @@ function layerTest(input: {
   readonly serverSettingsLayer?: ReturnType<typeof ServerSettings.layerTest>;
   readonly projectServiceLayer?: Layer.Layer<ProjectService.ProjectService>;
   readonly installationGateLayer?: Layer.Layer<ProviderInstallationGate.ProviderInstallationGate>;
+  readonly direnvLayer?: Layer.Layer<
+    DirenvEnvironment.DirenvEnvironment | ProjectEnvironmentService.ProjectEnvironmentService
+  >;
 }) {
   const layerConfiguredEventSink =
     input.flakyReleaseWrites !== undefined
@@ -727,6 +733,7 @@ function layerTest(input: {
           input.installationGateLayer ?? ProviderInstallationGate.layer,
           ...(input.serverSettingsLayer === undefined ? [] : [input.serverSettingsLayer]),
           ...(input.projectServiceLayer === undefined ? [] : [input.projectServiceLayer]),
+          ...(input.direnvLayer === undefined ? [] : [input.direnvLayer]),
         ),
       ),
     ),
@@ -1385,6 +1392,7 @@ it.effect(
         const threadB = ThreadId.make("thread-provider-session-manager-shared-stopped-b");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -1474,6 +1482,7 @@ it.effect(
         const threadB = ThreadId.make("thread-provider-session-manager-stopped-ended-b");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -1624,6 +1633,7 @@ it.effect(
         const sibling = ThreadId.make("thread-provider-session-manager-release-sibling");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -2603,6 +2613,7 @@ it.effect(
         const threadId = ThreadId.make("thread-provider-session-manager-attach-race");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -2666,6 +2677,7 @@ it.effect(
         const threadId = ThreadId.make("thread-provider-session-manager-stale-attach");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -2758,6 +2770,7 @@ it.effect(
         const threadId = ThreadId.make("thread-provider-session-manager-resolve-stop");
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [
@@ -4206,6 +4219,7 @@ it.effect.each([
         });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
 
         yield* eventSink.write({
@@ -4486,6 +4500,7 @@ it.effect(
         });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: projectId,
         });
         const parentProviderThread = makeProviderThread({
           idAllocator,
@@ -4786,6 +4801,7 @@ it.effect.each([
         const parentRunId = idAllocator.derive.run({ threadId: parentThreadId, ordinal: 1 });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         yield* eventSink.write({
           events: [yield* makeThreadCreatedEvent({ idAllocator, threadId: parentThreadId, now })],
@@ -4959,6 +4975,7 @@ it.effect(
         });
         const providerSessionId = idAllocator.derive.providerSession({
           providerInstanceId: modelSelection.instanceId,
+          projectId: ProjectId.make("project-provider-session-manager"),
         });
         const providerThread = makeProviderThread({
           idAllocator,
@@ -5232,5 +5249,405 @@ it.effect("ProviderSessionManagerV2 gives a delegated child its project's device
       delegatedBy: ThreadId.make("thread-provider-session-manager-parent"),
     });
     assert.isTrue(child?.capabilities?.has("device"));
+  }),
+);
+
+/**
+ * Runs `body` against a manager whose direnv loads answer from `results` in
+ * order, recording each load's `previous` diff and the environment each
+ * provider process opened with.
+ */
+function runDirenvScenario(
+  results: ReadonlyArray<DirenvEnvironment.DirenvLoadResult>,
+  body: (input: {
+    readonly manager: ProviderSessionManager.ProviderSessionManagerV2["Service"];
+    readonly open: Effect.Effect<
+      ProviderAdapter.ProviderAdapterV2SessionRuntime,
+      ProviderSessionManager.ProviderSessionManagerV2Error
+    >;
+    /** A second thread in the same project, joining the shared session. */
+    readonly openOther: Effect.Effect<
+      ProviderAdapter.ProviderAdapterV2SessionRuntime,
+      ProviderSessionManager.ProviderSessionManagerV2Error
+    >;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<
+    void,
+    ProviderSessionManager.ProviderSessionManagerV2Error,
+    IdAllocator.IdAllocatorV2 | ProjectionStore.ProjectionStoreV2
+  >,
+  options: {
+    readonly backgroundWork?: Effect.Effect<boolean>;
+    /** Runs inside the nth direnv load (from 1), while it evaluates; `release` closes the session. */
+    readonly beforeLoad?: (index: number, release: Effect.Effect<void>) => Effect.Effect<void>;
+    /** Where the second thread works, such as another worktree of the project. */
+    readonly otherCwd?: string;
+  } = {},
+) {
+  return Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const threadId = ThreadId.make("thread-provider-session-manager-direnv");
+    const loadCwds: string[] = [];
+    let releaseSession: Effect.Effect<void> = Effect.void;
+    const loads = yield* Ref.make<
+      ReadonlyArray<DirenvEnvironment.DirenvEnvironmentDiff | undefined>
+    >([]);
+    const openedWith = yield* Ref.make<
+      ReadonlyArray<DirenvEnvironment.DirenvEnvironmentDiff | undefined>
+    >([]);
+    const direnvLayer = Layer.succeed(
+      DirenvEnvironment.DirenvEnvironment,
+      DirenvEnvironment.DirenvEnvironment.of({
+        load: (cwd, previous) =>
+          Effect.gen(function* () {
+            loadCwds.push(cwd);
+            if (options.beforeLoad) {
+              yield* options.beforeLoad(
+                loadCwds.length,
+                Effect.suspend(() => releaseSession),
+              );
+            }
+            return yield* Ref.modify(loads, (current) => [
+              results[Math.min(current.length, results.length - 1)]!,
+              [...current, previous],
+            ]);
+          }),
+        allow: () => Effect.succeed({ _tag: "Allowed" }),
+        inspect: () => Effect.succeedNone,
+      }),
+    ).pipe(
+      Layer.merge(
+        Layer.succeed(
+          ProjectEnvironmentService.ProjectEnvironmentService,
+          ProjectEnvironmentService.ProjectEnvironmentService.of({
+            status: () => Effect.die("unused"),
+            approve: () => Effect.die("unused"),
+            prepare: () => Effect.succeed(true),
+            enabled: () => Effect.succeed(true),
+          }),
+        ),
+      ),
+    );
+    const beforeOpen = () =>
+      Ref.update(openedWith, (current) => [
+        ...current,
+        DirenvEnvironment.readThreadDirenvEnvironment(threadId),
+      ]);
+
+    yield* Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      releaseSession = manager
+        .release({ providerSessionId, reason: "idle_timeout" })
+        .pipe(Effect.orDie);
+      const otherThreadId = ThreadId.make("thread-provider-session-manager-direnv-other");
+      yield* eventSink.write({
+        events: [
+          yield* makeThreadCreatedEvent({ idAllocator, threadId, now }),
+          yield* makeThreadCreatedEvent({ idAllocator, threadId: otherThreadId, now }),
+        ],
+      });
+      yield* body({
+        manager,
+        open: manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy }),
+        openOther: manager.open({
+          threadId: otherThreadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy: { ...runtimePolicy, cwd: options.otherCwd ?? runtimePolicy.cwd },
+        }),
+        threadId,
+      });
+    }).pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 60_000,
+          beforeOpen,
+          direnvLayer,
+          ...(options.backgroundWork ? { hasPendingBackgroundWork: options.backgroundWork } : {}),
+        }),
+      ),
+    );
+    return {
+      state: yield* Ref.get(state),
+      loads: yield* Ref.get(loads),
+      loadCwds,
+      openedWith: yield* Ref.get(openedWith),
+    };
+  });
+}
+
+it.effect("ProviderSessionManagerV2 opens a session with the project's direnv environment", () =>
+  Effect.gen(function* () {
+    const diff = { PATH: "/nix/store/tools/bin", DIRENV_DIFF: "d1" };
+    const result = yield* runDirenvScenario([{ _tag: "Loaded", diff, changed: true }], ({ open }) =>
+      open.pipe(Effect.asVoid),
+    );
+    assert.deepStrictEqual(result.openedWith, [diff]);
+    assert.deepStrictEqual(result.loads, [undefined]);
+  }),
+);
+
+it.effect("ProviderSessionManagerV2 keeps a session whose direnv environment is current", () =>
+  Effect.gen(function* () {
+    const diff = { PATH: "/nix/store/tools/bin", DIRENV_DIFF: "d1" };
+    const result = yield* runDirenvScenario(
+      [
+        { _tag: "Loaded", diff, changed: true },
+        { _tag: "Loaded", diff, changed: false },
+      ],
+      ({ open }) =>
+        Effect.gen(function* () {
+          const first = yield* open;
+          const second = yield* open;
+          assert.strictEqual(first, second);
+        }),
+    );
+    assert.equal(result.state.openCount, 1);
+    // The reuse is direnv's staleness check against what the session loaded.
+    assert.deepStrictEqual(result.loads, [undefined, diff]);
+  }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 restarts an idle session when its direnv environment changes",
+  () =>
+    Effect.gen(function* () {
+      const before = { PATH: "/nix/store/old/bin", DIRENV_DIFF: "d1" };
+      const after = { PATH: "/nix/store/new/bin", DIRENV_DIFF: "d2" };
+      const result = yield* runDirenvScenario(
+        [
+          { _tag: "Loaded", diff: before, changed: true },
+          { _tag: "Loaded", diff: before, changed: false },
+          { _tag: "Loaded", diff: after, changed: true },
+        ],
+        ({ open, openOther }) =>
+          Effect.gen(function* () {
+            const first = yield* open;
+            // Another idle thread sharing the process does not hold the change back.
+            assert.strictEqual(yield* openOther, first);
+            const second = yield* open;
+            assert.notStrictEqual(first, second);
+          }),
+      );
+      assert.equal(result.state.openCount, 2);
+      assert.deepStrictEqual(result.openedWith, [before, after]);
+      // The restart reuses the environment the check loaded instead of evaluating again.
+      assert.equal(result.loads.length, 3);
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 keeps a session with background work despite a direnv change",
+  () =>
+    Effect.gen(function* () {
+      const before = { PATH: "/nix/store/old/bin", DIRENV_DIFF: "d1" };
+      const result = yield* runDirenvScenario(
+        [{ _tag: "Loaded", diff: before, changed: true }],
+        ({ open }) => Effect.all([open, open], { discard: true }),
+        { backgroundWork: Effect.succeed(true) },
+      );
+      assert.equal(result.state.openCount, 1);
+      // The check waits for the work to finish instead of evaluating direnv now.
+      assert.equal(result.loads.length, 1);
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 keeps a session whose background work starts during a direnv check",
+  () =>
+    Effect.gen(function* () {
+      const pending = yield* Ref.make(false);
+      const result = yield* runDirenvScenario(
+        [
+          {
+            _tag: "Loaded",
+            diff: { PATH: "/nix/store/old/bin", DIRENV_DIFF: "d1" },
+            changed: true,
+          },
+          {
+            _tag: "Loaded",
+            diff: { PATH: "/nix/store/new/bin", DIRENV_DIFF: "d2" },
+            changed: true,
+          },
+        ],
+        ({ open }) => Effect.all([open, open], { discard: true }),
+        {
+          backgroundWork: Ref.get(pending),
+          beforeLoad: (index) => (index === 2 ? Ref.set(pending, true) : Effect.void),
+        },
+      );
+      assert.equal(result.state.openCount, 1);
+    }),
+);
+
+it.effect.each([
+  { during: "the direnv load", inLoad: true },
+  { during: "the final background-work probe", inLoad: false },
+])("ProviderSessionManagerV2 opens a new session when one closes during $during", ({ inLoad }) =>
+  Effect.gen(function* () {
+    const diff = { PATH: "/nix/store/tools/bin", DIRENV_DIFF: "d1" };
+    let probes = 0;
+    let release: Effect.Effect<void> = Effect.void;
+    const result = yield* runDirenvScenario(
+      [
+        { _tag: "Loaded", diff, changed: true },
+        { _tag: "Loaded", diff, changed: true },
+        { _tag: "Loaded", diff, changed: true },
+      ],
+      ({ manager, open }) =>
+        Effect.gen(function* () {
+          const first = yield* open;
+          const second = yield* open;
+          assert.notStrictEqual(second, first);
+          assert.isTrue(yield* manager.isLive(second.providerSessionId));
+        }),
+      {
+        // The second probe is the last check before a restart; the session closes, and is busy.
+        backgroundWork: Effect.suspend(() =>
+          ++probes === 2 && !inLoad ? release.pipe(Effect.as(true)) : Effect.succeed(false),
+        ),
+        beforeLoad: (index, releaseSession) => {
+          release = releaseSession;
+          return index === 2 && inLoad ? releaseSession : Effect.void;
+        },
+      },
+    );
+    assert.equal(result.state.openCount, 2);
+  }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 keeps a session whose turn starts during the final background-work probe",
+  () =>
+    Effect.gen(function* () {
+      let probes = 0;
+      let startTurn: Effect.Effect<unknown> = Effect.void;
+      const result = yield* runDirenvScenario(
+        [
+          {
+            _tag: "Loaded",
+            diff: { PATH: "/nix/store/old/bin", DIRENV_DIFF: "d1" },
+            changed: true,
+          },
+          {
+            _tag: "Loaded",
+            diff: { PATH: "/nix/store/new/bin", DIRENV_DIFF: "d2" },
+            changed: true,
+          },
+        ],
+        ({ open, threadId }) =>
+          Effect.gen(function* () {
+            const first = yield* open;
+            const idAllocator = yield* IdAllocator.IdAllocatorV2;
+            const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+            const runId = idAllocator.derive.run({ threadId, ordinal: 1 });
+            startTurn = first
+              .startTurn({
+                appThread: (yield* projectionStore.getThreadProjection(threadId).pipe(Effect.orDie))
+                  .thread,
+                threadId,
+                runId,
+                runOrdinal: 1,
+                providerTurnOrdinal: 1,
+                attemptId: idAllocator.derive.runAttempt({ runId, attemptOrdinal: 1 }),
+                rootNodeId: idAllocator.derive.rootNode({ runId }),
+                providerThread: makeProviderThread({
+                  idAllocator,
+                  threadId,
+                  providerSessionId: first.providerSessionId,
+                  now: yield* DateTime.now,
+                }),
+                message: {
+                  createdBy: "user",
+                  creationSource: "web",
+                  messageId: yield* idAllocator.allocate
+                    .message({ threadId, ordinal: 1 })
+                    .pipe(Effect.orDie),
+                  text: "turn",
+                  attachments: [],
+                },
+                modelSelection,
+                runtimePolicy,
+              })
+              .pipe(Effect.orDie);
+            assert.strictEqual(yield* open, first);
+          }),
+        {
+          backgroundWork: Effect.suspend(() =>
+            ++probes === 2 ? startTurn.pipe(Effect.as(false)) : Effect.succeed(false),
+          ),
+        },
+      );
+      assert.equal(result.state.openCount, 1);
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 loads a restarted session's environment in its own checkout",
+  () =>
+    Effect.gen(function* () {
+      const changed = { PATH: "/nix/store/new/bin", DIRENV_DIFF: "d2" };
+      const result = yield* runDirenvScenario(
+        [
+          {
+            _tag: "Loaded",
+            diff: { PATH: "/nix/store/old/bin", DIRENV_DIFF: "d1" },
+            changed: true,
+          },
+          { _tag: "Loaded", diff: changed, changed: true },
+          { _tag: "Loaded", diff: changed, changed: true },
+        ],
+        ({ open, openOther }) => Effect.all([open, openOther], { discard: true }),
+        { otherCwd: "/tmp" },
+      );
+      assert.equal(result.state.openCount, 2);
+      // The check ran where the process started; the replacement starts in the other checkout.
+      assert.equal(result.loadCwds.at(-1), "/tmp");
+      assert.notEqual(result.loadCwds.at(-2), "/tmp");
+    }),
+);
+
+it.effect(
+  "ProviderSessionManagerV2 restarts without an environment direnv no longer provides",
+  () =>
+    Effect.gen(function* () {
+      const diff = { PATH: "/nix/store/tools/bin", DIRENV_DIFF: "d1" };
+      const result = yield* runDirenvScenario(
+        [{ _tag: "Loaded", diff, changed: true }, { _tag: "None" }, { _tag: "None" }],
+        ({ open }) => Effect.all([open, open], { discard: true }),
+      );
+      assert.equal(result.state.openCount, 2);
+      assert.deepStrictEqual(result.openedWith, [diff, undefined]);
+    }),
+);
+
+it.effect("ProviderSessionManagerV2 reports a failing .envrc once per thread", () =>
+  Effect.gen(function* () {
+    const blocked: DirenvEnvironment.DirenvLoadResult = {
+      _tag: "Failed",
+      envrcPath: "/project/.envrc",
+      reason: "blocked",
+      message: "/project/.envrc is blocked. Run `direnv allow` to approve its content",
+    };
+    const result = yield* runDirenvScenario([blocked], ({ manager, open, threadId }) =>
+      Effect.gen(function* () {
+        yield* open;
+        assert.deepStrictEqual(yield* manager.takeProjectEnvironmentFailure(threadId), blocked);
+        assert.equal(yield* manager.takeProjectEnvironmentFailure(threadId), undefined);
+        // The per-message check sees the same failure; the thread already shows it.
+        yield* open;
+        assert.equal(yield* manager.takeProjectEnvironmentFailure(threadId), undefined);
+      }),
+    );
+    assert.equal(result.state.openCount, 1);
+    assert.deepStrictEqual(result.openedWith, [undefined]);
   }),
 );

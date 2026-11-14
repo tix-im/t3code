@@ -174,6 +174,7 @@ import type {
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
 import { ComposerErrorNotice } from "./ComposerErrorNotice";
+import { ProjectEnvironmentBanner } from "./ProjectEnvironmentBanner";
 import { ManagedRuntimeModeNotice } from "./ManagedRuntimeModeNotice";
 import { FreshSessionNotice } from "./FreshSessionNotice";
 import { Notice } from "../../components/ui/Notice";
@@ -1686,6 +1687,12 @@ function ThreadDetailBody(
                         onDismiss={() => props.onDismissFeedback(submission.id)}
                       />
                     ))}
+                    <ProjectEnvironmentBanner
+                      className="shrink-0 px-4 pb-2"
+                      environmentId={props.environmentId}
+                      projectId={props.selectedThread.projectId}
+                      threadId={props.selectedThread.id}
+                    />
                     {freshSessionAvailable ? (
                       <FreshSessionNotice threadKey={selectedThreadKey} />
                     ) : null}

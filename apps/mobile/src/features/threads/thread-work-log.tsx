@@ -53,6 +53,10 @@ import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useThreadShell } from "../../state/entities";
+import { useEnvironmentQuery } from "../../state/query";
+import { appAtomRegistry } from "../../state/atom-registry";
+import { projectEnvironment } from "../../state/projectEnvironment";
 import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
@@ -864,6 +868,32 @@ function HighlightedCodeText({
   );
 }
 
+/** Brings back the composer's review of the thread's blocked `.envrc`. */
+function ReviewEnvrcButton(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+}) {
+  const shell = useThreadShell(scopeThreadRef(props.environmentId, props.threadId));
+  const target = shell
+    ? { environmentId: props.environmentId, projectId: shell.projectId, threadId: props.threadId }
+    : null;
+  const status = useEnvironmentQuery(target ? projectEnvironment.statusAtom(target) : null);
+  if (target === null || status.data?.pending === "none") return null;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      hitSlop={6}
+      onPress={() => {
+        projectEnvironment.reviewAgain(appAtomRegistry, target);
+        status.refresh();
+      }}
+      className="min-h-8 justify-center px-2"
+    >
+      <Text className="font-t3-medium text-xs text-foreground">Review .envrc</Text>
+    </Pressable>
+  );
+}
+
 const ThreadWorkLogRow = function ThreadWorkLogRow(
   props: Omit<
     ThreadWorkLogProps,
@@ -1126,6 +1156,13 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         )}
 
         <View className="shrink-0 flex-row items-center gap-px">
+          {row.projectedItem.item.type === "system_notice" &&
+          row.projectedItem.item.action?.type === "direnv.allow" ? (
+            <ReviewEnvrcButton
+              environmentId={props.environmentId}
+              threadId={row.projectedItem.item.threadId}
+            />
+          ) : null}
           {props.copied ? (
             <Text className="pr-1 font-t3-medium text-3xs text-adaptive-emerald-600-400">
               Copied

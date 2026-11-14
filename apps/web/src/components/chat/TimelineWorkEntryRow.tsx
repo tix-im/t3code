@@ -9,6 +9,7 @@ import {
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type EnvironmentId,
+  type ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -24,7 +25,7 @@ import {
   turnItemNeedsDetailFetch,
 } from "@t3tools/client-runtime/work-log/item-detail";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
-import { memo, use, useState, type KeyboardEvent } from "react";
+import { memo, use, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
@@ -36,6 +37,9 @@ import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useThreadShell } from "../../state/entities";
+import { useEnvironmentQuery } from "../../state/query";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { projectEnvironment } from "../../state/projectEnvironment";
 import {
   threadReadLabelPrefix,
   threadReadTargetId,
@@ -151,6 +155,30 @@ type WorkEntryRowProps = {
   onToggleEntry?: ((collapsed: boolean) => void) | undefined;
   onContentReady?: (() => void) | undefined;
 };
+
+/** Brings back the composer's review of the thread's blocked `.envrc`. */
+function ReviewEnvrcButton({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const shell = useThreadShell(threadRef);
+  const target = shell ? { ...threadRef, projectId: shell.projectId } : null;
+  const status = useEnvironmentQuery(target ? projectEnvironment.statusAtom(target) : null);
+  if (target === null || status.data?.pending === "none") return null;
+  const onClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    projectEnvironment.reviewAgain(appAtomRegistry, target);
+    status.refresh();
+  };
+  return (
+    <Button
+      onClick={onClick}
+      onKeyDown={(event) => event.stopPropagation()}
+      size="xs"
+      type="button"
+      variant="ghost-muted"
+    >
+      Review .envrc
+    </Button>
+  );
+}
 
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
   const ctx = use(TimelineRowCtx);
@@ -544,6 +572,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                 )}
               />
             </span>
+          ) : null}
+          {workEntry.warningAction?.type === "direnv.allow" && threadRef ? (
+            <ReviewEnvrcButton threadRef={threadRef} />
           ) : null}
           <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
         </>
