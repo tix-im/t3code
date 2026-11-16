@@ -113,3 +113,13 @@ describe("tool image output parsing", () => {
     },
   );
 });
+
+describe("tool text output", () => {
+  it("shows ACP tool call content as its text", () => {
+    const output = [
+      { type: "content", content: { type: "text", text: "line1\nline2" } },
+      { type: "content", content: { type: "resource_link", uri: "file:///tmp/log.txt" } },
+    ];
+    expect(turnItemOutputText(toolItem(output))).toBe("line1\nline2\nfile:///tmp/log.txt");
+  });
+});

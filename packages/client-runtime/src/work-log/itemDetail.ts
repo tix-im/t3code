@@ -34,6 +34,8 @@ function textFromBlocks(
     if (typeof resource.text === "string") return resource.text;
     if (typeof resource.uri === "string") return resource.uri;
   }
+  if (value.type === "content" && isRecord(value.content))
+    return textFromBlocks(value.content, depth + 1, imageBlocks);
   const keys = Object.keys(value).filter((key) => key !== "isError" && key !== "is_error");
   if (keys.length === 1 && keys[0] === "content")
     return textFromBlocks(value.content, depth + 1, imageBlocks);
