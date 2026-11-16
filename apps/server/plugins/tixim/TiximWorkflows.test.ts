@@ -432,6 +432,16 @@ describe("thread workflows", () => {
           ["saved-before-counts", "available"],
         ]),
       );
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE tixim_workflow_links SET payload_json = json_remove(payload_json, '$.projectName') WHERE run_id = 'settled'`;
+      requested.length = 0;
+      const backfilled = yield* list("thread-a");
+      expect(requested.map((ids) => ids.toSorted())).toEqual([["saved-before-counts", "settled"]]);
+      expect(backfilled.runs.find((r) => r.runId === "settled")?.projectName).toBe("tixim");
+      yield* sql`UPDATE tixim_workflow_links SET payload_json = json_remove(payload_json, '$.projectName') WHERE run_id = 'settled'`;
+      requested.length = 0;
+      yield* list("thread-a");
+      expect(requested).toEqual([["saved-before-counts"]]);
       reachable = false;
       expect((yield* list("thread-a")).runs.every((r) => r.availability === "unavailable")).toBe(
         true,
@@ -452,6 +462,7 @@ describe("thread workflows", () => {
                   state: "completed",
                   ...(id === "settled"
                     ? {
+                        projectName: "tixim",
                         steps: {
                           running: 0,
                           failed: 0,

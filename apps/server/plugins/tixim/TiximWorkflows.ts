@@ -184,6 +184,16 @@ const FINISHED_STATES = new Set(["completed", "failed", "cancelled"]);
 /** A restart creates a new run, so a finished run never changes. Links saved before counts existed still need one read. */
 const isSettled = (run: TiximWorkflowRun) =>
   FINISHED_STATES.has(run.state) && run.steps !== undefined;
+// Links saved before daemons sent a project get one read per server process; runs without a project stay settled after it.
+const projectReads = new Set<string>();
+const needsRead = (run: TiximWorkflowRun) => {
+  if (!isSettled(run)) return true;
+  if (run.projectName !== undefined || run.projectPath !== undefined) return false;
+  const key = `${run.daemonId}/${run.runId}`;
+  if (projectReads.has(key)) return false;
+  projectReads.add(key);
+  return true;
+};
 
 const savedState = Effect.fn("TiximWorkflows.savedState")(function* (threadId: string) {
   if (!(yield* threadExists(threadId))) return { previous: [], connections: [], snoozed: false };
@@ -238,7 +248,7 @@ export const list = Effect.fn(function* (threadId: string) {
           threadId,
           entry.id,
           attached
-            .filter(({ row, run }) => row.connection_id === entry.id && !isSettled(run))
+            .filter(({ row, run }) => row.connection_id === entry.id && needsRead(run))
             .map(({ row }) => row.run_id),
         ),
       ).pipe(Effect.map((result) => ({ entry, result }))),
