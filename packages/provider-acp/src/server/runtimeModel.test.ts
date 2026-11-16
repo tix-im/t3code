@@ -361,6 +361,44 @@ describe("AcpRuntimeModel", () => {
     ).toBe(true);
   });
 
+  it("keeps a tool call's title across untitled updates until the agent retitles it", () => {
+    const toolCall = (update: EffectAcpSchema.SessionNotification["update"]) => {
+      const event = parseSessionUpdateEvent({ sessionId: "session-1", update }).events[0];
+      if (event?._tag !== "ToolCallUpdated") {
+        throw new Error("expected a tool call update");
+      }
+      return event.toolCall;
+    };
+
+    const created = toolCall({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-1",
+      title: "Starting worker",
+      kind: "other",
+      status: "in_progress",
+    });
+    const progressed = mergeToolCallState(
+      created,
+      toolCall({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-1",
+        status: "in_progress",
+        content: [{ type: "content", content: { type: "text", text: "worker ready" } }],
+      }),
+    );
+    expect(progressed.title).toBe("Starting worker");
+
+    const retitled = mergeToolCallState(
+      progressed,
+      toolCall({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-1",
+        title: "Running step 2",
+      }),
+    );
+    expect(retitled.title).toBe("Running step 2");
+  });
+
   it("forwards an empty ACP v1 plan to clear previous entries", () => {
     const entries = [
       [{ content: "Inspect state", priority: "high", status: "pending" }],

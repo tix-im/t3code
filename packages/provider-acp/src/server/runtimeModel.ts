@@ -874,12 +874,9 @@ function makeToolCallState(
     data.meta = input._meta;
   }
   const fallbackDetail = command ?? normalizedTitle ?? textContent;
-  const hasPresentationSeed =
-    title !== undefined ||
-    kind !== undefined ||
-    command !== undefined ||
-    normalizedTitle !== undefined ||
-    textContent !== undefined;
+  // Text alone only yields the "Tool" fallback, which would replace the merged title.
+  const namesTool = title !== undefined || kind !== undefined || command !== undefined;
+  const hasPresentationSeed = namesTool || textContent !== undefined;
   const presentation = hasPresentationSeed
     ? deriveToolActivityPresentation({
         itemType: canonicalItemTypeFromAcpToolKind(kind),
@@ -893,7 +890,7 @@ function makeToolCallState(
   return {
     toolCallId,
     ...(kind ? { kind } : {}),
-    ...(presentation?.summary ? { title: presentation.summary } : {}),
+    ...(namesTool && presentation?.summary ? { title: presentation.summary } : {}),
     ...(status ? { status } : {}),
     ...(command ? { command } : {}),
     ...(presentation?.detail ? { detail: presentation.detail } : {}),
